@@ -1,0 +1,14 @@
+{
+    "name": "e-den-marketplace",
+    "owner": {
+        "name": "Alessandro Dentella",
+        "email": "sandro@e-den.it"
+    },
+    "plugins": [
+        {
+            "name": "e-den",
+            "source": "./plugins/e-den",
+            "description": "Skill e-den: compare-words, django-startproject, quasar-startproject"
+        }
+    ]
+}

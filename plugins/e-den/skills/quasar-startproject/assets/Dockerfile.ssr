@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:experimental
+
+# develop stage
+FROM oven/bun:1.1-alpine AS develop-stage
+WORKDIR /app
+
+# Copia file di dipendenze
+COPY package.json bun.lockb ./
+
+# Installa Quasar CLI globalmente
+RUN bun add -g @quasar/cli
+
+# Copia il resto del progetto
+COPY . .
+
+# build stage
+FROM develop-stage AS build-stage
+RUN bun install --frozen-lockfile
+RUN bun run build -m ssr
+
+# production stage (Node.js server, not nginx)
+FROM oven/bun:1.1-alpine AS production-stage
+WORKDIR /app
+
+COPY --from=build-stage /app/dist/ssr /app
+
+RUN bun install --frozen-lockfile --production
+
+EXPOSE 3000
+CMD ["bun", "run", "index.js"]

@@ -1,0 +1,15 @@
+build_image:
+  image: docker
+
+  tags:
+    - node
+
+  variables:
+    ENV: dev
+    DOCKER_BUILDKIT: 1
+    IMAGE_NAME: $REGISTRY_NAME/e-den/brainflow/brainflow-quasar:$CI_COMMIT_REF_SLUG
+
+  script:
+    - echo $REGISTRY_PASS | docker login -u $REGISTRY_USER --password-stdin $REGISTRY_NAME
+    - docker build -t $IMAGE_NAME .
+    - docker push $IMAGE_NAME

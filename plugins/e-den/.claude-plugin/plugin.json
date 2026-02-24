@@ -1,0 +1,9 @@
+{
+    "name": "e-den",
+    "description": "Plugin e-den con skill per comparazione parole inglesi e scaffolding progetti Django/Quasar",
+    "version": "1.0.0",
+    "author": {
+        "name": "Alessandro Dentella",
+        "email": "sandro@e-den.it"
+    }
+}
