@@ -9,6 +9,11 @@
             "name": "e-den",
             "source": "./plugins/e-den",
             "description": "Skill e-den: compare-words, django-startproject, quasar-startproject"
+        },
+        {
+            "name": "brainflow",
+            "source": "./plugins/brainflow",
+            "description": "Importa programmi di corso in Brainflow come Flow: connessione MCP remota (/mcp) + skill brainflow-import"
         }
     ]
 }

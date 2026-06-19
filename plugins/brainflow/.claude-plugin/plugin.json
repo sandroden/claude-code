@@ -1,0 +1,9 @@
+{
+    "name": "brainflow",
+    "description": "Importa programmi di corso in Brainflow come Flow: connessione al server MCP remoto /mcp + skill brainflow-import. Richiede un token di un account Brainflow (env BRAINFLOW_TOKEN; URL override via BRAINFLOW_API_URL).",
+    "version": "1.0.0",
+    "author": {
+        "name": "Alessandro Dentella",
+        "email": "sandro@e-den.it"
+    }
+}

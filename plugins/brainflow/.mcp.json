@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "brainflow": {
+            "type": "http",
+            "url": "${BRAINFLOW_API_URL:-https://brainflow.e-den.it}/mcp",
+            "headers": {
+                "Authorization": "Token ${BRAINFLOW_TOKEN}"
+            }
+        }
+    }
+}
