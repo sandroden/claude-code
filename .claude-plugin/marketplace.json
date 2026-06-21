@@ -8,7 +8,7 @@
         {
             "name": "e-den",
             "source": "./plugins/e-den",
-            "description": "Skill e-den: compare-words, django-startproject, quasar-startproject"
+            "description": "Skill e-den: compare-words, django-startproject, quasar-startproject + comando installa-statusline"
         },
         {
             "name": "brainflow",
