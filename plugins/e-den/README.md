@@ -3,7 +3,7 @@
 Plugin Claude Code con skill e comandi di uso quotidiano: comparazione di termini
 inglesi, scaffolding di progetti Django/Quasar e configurazione della status line.
 
-**Versione**: 1.1.0
+**Versione**: 1.1.1
 **Autore**: Alessandro Dentella
 
 ---
