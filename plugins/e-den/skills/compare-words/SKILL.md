@@ -1,6 +1,7 @@
 ---
 name: compare-words
-description: Analyze and compare English words or terms (2-3 at a time) to explain their differences in meaning, usage, register, connotations, and typical contexts. Use this skill when the user asks to compare English words using "vs" or "versus", or when they want to understand subtle differences between similar terms. Provide analysis in Italian with examples in English.
+description: Analyze and compare English words or terms (2-3 at a time). Trigger: user asks "X vs Y", "X versus Y", or wants to understand subtle differences between similar English terms.
+model: haiku
 ---
 
 # Compare Words
@@ -81,6 +82,14 @@ Structure the response as follows:
 **Quando usare quale**:
 [Practical guidance on choosing between the terms]
 
+**Confronto rapido**:
+
+| | [Parola 1] | [Parola 2] |
+|---|---|---|
+| Cos'è | [definizione breve] | [definizione breve] |
+| Durata/Intensità | [caratteristica] | [caratteristica] |
+| Sensazione | [tono/registro] | [tono/registro] |
+
 ## Guidelines
 
 - Write all analysis and explanations in Italian
@@ -122,3 +131,11 @@ Structure the response as follows:
 
 **Quando usare quale**:
 Usa **quaff** in scrittura creativa, testi letterari o per effetto comico/arcaico. Usa **chug** nel linguaggio quotidiano informale quando descrivi qualcuno che beve molto velocemente.
+
+**Confronto rapido**:
+
+| | Quaff | Chug |
+|---|---|---|
+| Cos'è | Bere con piacere, a grandi sorsi | Bere rapidamente tutto d'un fiato |
+| Durata/Intensità | Lento, assaporato | Veloce, impetuoso |
+| Sensazione | Romantico, letterario | Informale, competitivo |
