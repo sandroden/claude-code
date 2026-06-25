@@ -48,8 +48,11 @@ comando esistente: se quel comando legge stdin (es. `input=$(cat)`), lo script e
 troverebbe vuoto e perderebbe modello + context. La soluzione è **catturare stdin una volta**
 (`__in=$(cat)`) e passarne una copia sia al comando esistente sia allo script e-den.
 
-I `jq` qui sotto **bacano il path assoluto** dello script in settings.json (via `--arg s`),
-così la statusLine funziona al render anche se `CLAUDE_CONFIG_DIR` non è nell'ambiente.
+I comandi `node` qui sotto **bacano il path assoluto** dello script in settings.json (via
+`process.argv`), così la statusLine funziona al render anche se `CLAUDE_CONFIG_DIR` non è
+nell'ambiente. Si usa `node` (sempre presente: Claude Code richiede Node.js) invece di `jq`,
+che su alcune macchine — tipicamente Windows — non è installato e farebbe fallire l'install
+silenziosamente.
 
 Controlla il campo `statusLine.command` nel JSON:
 
@@ -58,19 +61,19 @@ Controlla il campo `statusLine.command` nel JSON:
   Non modificare settings.json.
 
 - Se **esiste** `statusLine.command` ma **non contiene** `eden-statusline.sh`:
-  Usa `jq` per avvolgere il comando esistente condividendo stdin con lo script e-den:
+  Usa `node` per avvolgere il comando esistente condividendo stdin con lo script e-den:
 
   ```bash
   DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  jq --arg s "$DIR/scripts/eden-statusline.sh" '.statusLine.command = "__in=$(cat); printf \"%s\" \"$__in\" | { " + .statusLine.command + "; }; eden_extra=$(printf \"%s\" \"$__in\" | \($s)); [ -n \"$eden_extra\" ] && printf \" | %s\" \"$eden_extra\"; printf \"\\n\""' "$DIR/settings.json" > /tmp/settings_new.json && mv /tmp/settings_new.json "$DIR/settings.json"
+  node -e 'const fs=require("fs");const f=process.argv[1],s=process.argv[2];let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){}const old=c.statusLine.command;c.statusLine.command="__in=$(cat); printf \"%s\" \"$__in\" | { "+old+"; }; eden_extra=$(printf \"%s\" \"$__in\" | "+s+"); [ -n \"$eden_extra\" ] && printf \" | %s\" \"$eden_extra\"; printf \"\\n\"";fs.writeFileSync(f,JSON.stringify(c,null,2)+"\n")' "$DIR/settings.json" "$DIR/scripts/eden-statusline.sh"
   ```
 
 - Se **non esiste** `statusLine`:
-  Usa `jq` per aggiungerlo (lo script legge stdin direttamente, niente `cat > /dev/null`):
+  Usa `node` per aggiungerlo (lo script legge stdin direttamente, niente `cat > /dev/null`):
 
   ```bash
   DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  jq --arg s "$DIR/scripts/eden-statusline.sh" '. + {"statusLine": {"type": "command", "command": "eden_extra=$(\($s)); [ -n \"$eden_extra\" ] && printf \"%s\" \"$eden_extra\"; printf \"\\n\""}}' "$DIR/settings.json" > /tmp/settings_new.json && mv /tmp/settings_new.json "$DIR/settings.json"
+  node -e 'const fs=require("fs");const f=process.argv[1],s=process.argv[2];let c={};try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){}c.statusLine={type:"command",command:"eden_extra=$("+s+"); [ -n \"$eden_extra\" ] && printf \"%s\" \"$eden_extra\"; printf \"\\n\""};fs.writeFileSync(f,JSON.stringify(c,null,2)+"\n")' "$DIR/settings.json" "$DIR/scripts/eden-statusline.sh"
   ```
 
 **IMPORTANTE**: Non sovrascrivere la statusLine esistente. L'output dello script e-den deve essere **aggiunto in coda** all'output del comando già configurato, e il JSON di stdin deve arrivare a entrambi.
@@ -84,7 +87,7 @@ cat "$DIR/scripts/eden-statusline.sh"
 
 ```bash
 DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-jq '.statusLine' "$DIR/settings.json"
+node -e 'const fs=require("fs");console.log(JSON.stringify(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).statusLine,null,2))' "$DIR/settings.json"
 ```
 
 Mostra entrambi gli output all'utente e suggerisci di riavviare Claude Code.

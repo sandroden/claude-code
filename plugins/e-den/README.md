@@ -3,7 +3,7 @@
 Plugin Claude Code con skill e comandi di uso quotidiano: comparazione di termini
 inglesi, scaffolding di progetti Django/Quasar e configurazione della status line.
 
-**Versione**: 1.1.3
+**Versione**: 1.1.4
 **Autore**: Alessandro Dentella
 
 ---
@@ -83,7 +83,7 @@ Il comando:
 
 1. copia `eden-statusline.sh` in `~/.claude/scripts/`;
 2. appende un frammento bash al campo `statusLine.command` di `~/.claude/settings.json`
-   (via `jq`, mai sovrascrivendo quello esistente);
+   (via `node`, mai sovrascrivendo quello esistente);
 3. mostra il risultato e invita a riavviare Claude Code.
 
 ### Configurazione

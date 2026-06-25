@@ -41,13 +41,32 @@ select_thresholds() {
 
 input=$(cat)
 
+# JSON appiattito su una riga: rende grep affidabile anche con input pretty-printed
+json=$(printf '%s' "$input" | tr '\n' ' ')
+
+# Estrae un valore stringa JSON ("key":"value") senza jq (portabile su Git Bash)
+json_str() {
+    printf '%s' "$1" | grep -oE "\"$2\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 \
+        | sed -E "s/.*:[[:space:]]*\"([^\"]*)\".*/\1/"
+}
+
+# Estrae un valore numerico JSON ("key":12.3) senza jq
+json_num() {
+    printf '%s' "$1" | grep -oE "\"$2\"[[:space:]]*:[[:space:]]*[0-9.]+" | head -1 \
+        | sed -E "s/.*:[[:space:]]*([0-9.]+).*/\1/"
+}
+
 # --- Modello ---
-model=$(echo "$input" | jq -r '.model.id // "unknown"' | sed 's/claude-//; s/-[0-9].*//')
+# Isola l'oggetto "model" (flat) per non confondere "id" con altre chiavi id
+model_block=$(printf '%s' "$json" | grep -oE "\"model\"[[:space:]]*:[[:space:]]*\{[^}]*\}")
+model=$(json_str "$model_block" id)
+[ -z "$model" ] && model="unknown"
+model=$(printf '%s' "$model" | sed 's/claude-//; s/-[0-9].*//')
 printf '%s' "$model"
 
 # --- Context window ---
-used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
-total=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
+used=$(json_num "$json" used_percentage)
+total=$(json_num "$json" context_window_size)
 
 if [ -n "$used" ]; then
     pct=$(echo "$used" | awk '{printf "%d", int($1+0.5)}')
