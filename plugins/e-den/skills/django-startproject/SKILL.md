@@ -41,7 +41,7 @@ The script:
 - Converts `settings.py` to a settings folder (base/dev/staging/production)
 - Creates `apps/` directory and patches `manage.py` with `sys.path.insert`
 - Adds redirect `/` → `/admin` in urls.py
-- Creates `.envrc`, `CLAUDE.md`, `Dockerfile`, `.dockerignore`, `.gitlab-ci.yml`
+- Creates `.envrc`, `CLAUDE.md`, `Dockerfile`, `.dockerignore`, `.gitlab-ci.yml`, `uwsgi.ini`
 - Creates superuser `admin` if `~/.config/jmb.conf` has `JMB_PASSWORD`
 
 4. Inform the user the project is ready.

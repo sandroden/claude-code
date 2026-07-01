@@ -85,6 +85,15 @@ cp "$SKILL_DIR/assets/dockerignore" .dockerignore
 sed -i "s|__PROJECT_NAME__|${DJANGO_PROJECT_NAME}|g" .dockerignore
 cp "$SKILL_DIR/assets/gitlab-ci.yml" .gitlab-ci.yml
 
+# Copy uwsgi.ini and update project name references
+echo "==> Copying uwsgi.ini..."
+cp "$SKILL_DIR/assets/uwsgi.ini" .
+if [ "$DJANGO_PROJECT_NAME" != "core" ]; then
+  sed -i "s|/core/wsgi.py|/${DJANGO_PROJECT_NAME}/wsgi.py|g" uwsgi.ini
+  sed -i "s|/code/core/static|/code/${DJANGO_PROJECT_NAME}/static|g" uwsgi.ini
+  sed -i "s|/code/core/apps|/code/${DJANGO_PROJECT_NAME}/apps|g" uwsgi.ini
+fi
+
 # Update DJANGO_SETTINGS_MODULE in Dockerfile if project name is not 'core'
 if [ "$DJANGO_PROJECT_NAME" != "core" ]; then
   sed -i "s|DJANGO_SETTINGS_MODULE=core.settings|DJANGO_SETTINGS_MODULE=${DJANGO_PROJECT_NAME}.settings|g" Dockerfile
