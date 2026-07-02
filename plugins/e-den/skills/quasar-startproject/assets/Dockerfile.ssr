@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:experimental
 
 # develop stage
-FROM oven/bun:1.1-alpine AS develop-stage
+FROM oven/bun:1-alpine AS develop-stage
 WORKDIR /app
 
 # Copia file di dipendenze
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Installa Quasar CLI globalmente
 RUN bun add -g @quasar/cli
@@ -19,7 +19,7 @@ RUN bun install --frozen-lockfile
 RUN bun run build -m ssr
 
 # production stage (Node.js server, not nginx)
-FROM oven/bun:1.1-alpine AS production-stage
+FROM oven/bun:1-alpine AS production-stage
 WORKDIR /app
 
 COPY --from=build-stage /app/dist/ssr /app

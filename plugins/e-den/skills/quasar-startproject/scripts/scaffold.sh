@@ -34,8 +34,11 @@ cat > "$RUNNER_DIR/package.json" << 'PKGJSON'
 {"name":"cq-runner","private":true,"type":"module"}
 PKGJSON
 
-echo "==> Installing create-quasar..."
-cd "$RUNNER_DIR" && bun add create-quasar prompts 2>/dev/null
+# NB: pin create-quasar@2.2.3 — l'ultima versione basata su `prompts` che rispetta
+# prompts.override(). Dalla 4.x è passato a @clack/prompts e ignora l'override → i
+# prompt restano interattivi e lo scaffold non-interattivo fallisce.
+echo "==> Installing create-quasar@2.2.3..."
+cd "$RUNNER_DIR" && bun add create-quasar@2.2.3 prompts 2>/dev/null
 
 # Write the automation script that overrides all interactive prompts
 # projectFolder is just the name — create-quasar resolves it relative to CWD

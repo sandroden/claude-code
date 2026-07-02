@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:experimental
 
 # develop stage
-FROM oven/bun:1.1-alpine AS develop-stage
+FROM oven/bun:1-alpine AS develop-stage
 WORKDIR /app
 
-# Copia file di dipendenze
-COPY package.json bun.lockb ./
+# Copia file di dipendenze (bun 1.2+ usa il lockfile testuale bun.lock)
+COPY package.json bun.lock ./
 
 # Installa Quasar CLI globalmente
 RUN bun add -g @quasar/cli
