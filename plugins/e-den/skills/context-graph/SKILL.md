@@ -48,9 +48,13 @@ precedenti, ri-presenta sempre la tabella e lascia scegliere.
 python3 <script> --project <nome> --list
 ```
 
-L'output include già la tabella con la colonna `#` e gli **hint di sintassi**
-(`--top`, `--sessions <#|id>`, `--featured <#|id>`): rilancia quegli hint
-all'utente così può indicare la scelta col numero.
+L'output include già la tabella con la colonna `#` e, in coda, un blocco
+**«Come scegliere»** con gli hint di sintassi (`--top`, `--sessions <#|id>`,
+`--featured <#|id>`).
+
+**Obbligatorio**: mostra all'utente **sia** la tabella **sia** il blocco hint. Se
+riformatti la tabella (es. in box), riporta comunque le righe degli hint **verbatim**
+sotto — non scartarle. Servono all'utente per scegliere col `#`.
 
 Mostra all'utente la tabella **con la colonna `#`** (turni, prompt, picco,
 consumo, subag, primo prompt) e **proponi una scelta** con `AskUserQuestion`,
