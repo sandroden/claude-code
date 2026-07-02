@@ -1,7 +1,7 @@
 {
     "name": "e-den",
     "description": "Plugin e-den: skill per comparazione parole inglesi, scaffolding progetti Django/Quasar, analisi contesto/costi sessioni Claude Code e comando status line",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "author": {
         "name": "Alessandro Dentella",
         "email": "sandro@e-den.it"

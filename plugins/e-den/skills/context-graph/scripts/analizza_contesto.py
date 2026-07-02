@@ -493,7 +493,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
  <div class="panel">
   <h2>4 &middot; Consumo (integrale) e costo API</h2>
-  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> somma i <b>token</b> dei subagenti (asse sx). Sull'asse costi, tre linee: <b style="color:#ffd24f">solo main</b> (reale), <b style="color:#39d98a">sistema = main+subagenti</b> (reale) e <b style="color:#ff6b81">se SENZA delega</b> (stima) &mdash; il divario tra sistema reale e controfattuale &egrave; il risparmio della delega. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
+  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> somma i <b>token</b> dei subagenti (asse sx). Sull'asse costi, tre linee: <b style="color:#ffd24f">solo main</b> (reale), <b style="color:#39d98a">sistema = main+subagenti</b> (reale) e <b style="color:#ff6b81">se SENZA delega</b> &mdash; stima <i>serializzata</i>: tutto il lavoro dei subagenti fatto inline nel main, dove ogni turno rilegge il contesto accumulato (limite superiore indicativo). Il divario sistema&rarr;controfattuale &egrave; il risparmio della delega. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
   <label class="chk"><input type="checkbox" id="tgl4"> mostra i prompt utente (Enter) &mdash; Sessione A</label>
   <div class="chartbox"><canvas id="c4"></canvas></div>
   <div class="readout" id="c4read"><span class="hint">&harr; Trascina sul grafico per il costo dell'intervallo, per modello.</span></div>
@@ -552,17 +552,28 @@ const hasSub=subs.length>0;
 let _cf=0,_si=0; const cfPts=S[A].pts.map(p=>{const t=p[0];while(_si<subs.length&&subs[_si][0]<=t){_cf+=subs[_si][1];_si++;}return{x:t,y:p[1]+_cf};});
 // consumo di sistema cumulativo = main + token dei subagenti (aggiunti allo spawn)
 let _sc=0,_sj=0; const sysCum=S[A].cum.map(p=>{const t=p[0];while(_sj<subs.length&&subs[_sj][0]<=t){_sc+=subs[_sj][2];_sj++;}return{x:t,y:p[1]+_sc};});
-// area extra del controfattuale = consumo aggiuntivo stimato se il lavoro fosse inlineato
-let cfExtra=0; for(let i=0;i<cfPts.length;i++)cfExtra+=cfPts[i].y-S[A].pts[i][1];
 const subTok=ST.sub_tot||0,subCost=ST.sub_cost||0,subN=ST.sub_n||0,subModels=ST.sub_models||{};
-// costo controfattuale Opus cumulativo = costo main + "tassa di residenza"
-// (il materiale accumulato dai subagenti riletto come cache_read ad ogni turno)
-const _pO=PRICES.Opus; let _R=0,_k=0,_extra=0; const cfCost=S[A].cum.map((c,i)=>{const t=c[0];let nf=0;while(_k<subs.length&&subs[_k][0]<=t){nf+=subs[_k][1];_k++;}_R+=nf;_extra+=nf*_pO[3]+_R*_pO[2];return{x:t,y:cumCostOpus[i].y+_extra};});
-const cfCostTot=cfCost.length?cfCost[cfCost.length-1].y:0;
+const _pO=PRICES.Opus;
 // costo reale sistema cumulativo = costo main + costo reale dei subagenti (allo spawn)
 let _cs=0,_cj=0; const sysCostCurve=cumCostOpus.map(c=>{const t=c.x;while(_cj<subs.length&&subs[_cj][0]<=t){_cs+=subs[_cj][3];_cj++;}return{x:t,y:c.y+_cs};});
 const sysCostReal=totOpus+subCost;      // costo reale sistema = main + subagenti
-const cfSaving=cfCostTot-sysCostReal;   // risparmio stimato delegando
+// controfattuale "senza delega" = tutto il lavoro SERIALIZZATO nel main. Oltre al
+// costo reale del lavoro, ogni turno (i ~N turni di ciascun subagente + i turni del
+// main) rileggerebbe il contesto residente che la delega evita di trasportare.
+let _R=0,_qi=0,cfExtra=0; const cfCost=S[A].cum.map((c,i)=>{
+  const t=c[0];
+  while(_qi<subs.length && subs[_qi][0]<=t){
+    const s=subs[_qi];                 // [spawn,foot,tot,cost,type,nturns,model]
+    const Ci=(ctxByT[t]||0)+_R;        // contesto che il subagente, inline, dovrebbe rileggere
+    cfExtra += s[5]*Ci;                // nturns × contesto residente (riletture evitate)
+    _R += s[1];                        // il footprint resta poi residente
+    _qi++;
+  }
+  cfExtra += _R;                       // anche il main rilegge i footprint residenti ad ogni turno
+  return {x:t, y: sysCostCurve[i].y + cfExtra*_pO[2]};
+});
+const cfCostTot=cfCost.length?cfCost[cfCost.length-1].y:0;
+const cfSaving=cfCostTot-sysCostReal;   // risparmio stimato della delega (>=0)
 const modOf=m=>({Opus:'#c792ea',Sonnet:'#5adfd0',Haiku:'#ffb86b',Fable:'#ff6b81'}[m.split('/')[0]]||'#8aa0b3');
 
 // testi dinamici
@@ -576,7 +587,8 @@ if(hasSub){const mm=Object.entries(subModels).map(([m,n])=>`${m} ${n}t`).join(',
  const nWf=subs.filter(s=>String(s[4]).startsWith('wf:')).length;
  const note=(cheap?' (in parte su modelli pi&ugrave; economici, es. Haiku)':'')+
    (nWf?` &mdash; di cui <b>${nWf}</b> lanciati dai workflow (annidati in subagents/workflows/)`:'');
- q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}], <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> (barre nel grafico 3 e pannello 5)${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto. Costo reale del sistema ~<b>${usd(sysCostReal)}</b> (main ${usd(totOpus)} + subagenti ${usd(subCost)}). Se quel lavoro fosse stato <b>inlineato</b>, il materiale sarebbe rimasto residente e riletto ad ogni turno &rarr; ~<b>${fmt(cfExtra)}</b> token in pi&ugrave; e un costo stimato di ~<b>${usd(cfCostTot)}</b>: delegare ha risparmiato ~<b>${usd(cfSaving>0?cfSaving:0)}</b> <b>e</b> tenuto basso il contesto.`;}
+ const subTurns=subs.reduce((a,s)=>a+(s[5]||0),0);
+ q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}] su <b>${fmt(subTurns)}</b> turni, <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> (barre nel grafico 3 e pannello 5)${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto. Costo reale del sistema ~<b>${usd(sysCostReal)}</b> (main ${usd(totOpus)} + subagenti ${usd(subCost)}). Se lo stesso lavoro fosse stato fatto <b>inline</b> (tutto serializzato nel main), ognuno di quei ${fmt(subTurns)} turni avrebbe riletto il contesto accumulato: ~<b>${usd(cfCostTot)}</b> stimati contro ${usd(sysCostReal)} reali &rarr; la delega ha risparmiato ~<b>${usd(cfSaving)}</b> <b>e</b> tenuto basso il contesto. <span class="hint">(stima "serializzata": limite superiore indicativo)</span>`;}
 else{const li=q('li-sub');if(li)li.style.display='none';}
 
 // cards
