@@ -28,7 +28,7 @@ Riavvia/riconnetti Claude Code dopo l'installazione.
 
 | Plugin | Versione | Descrizione | Documentazione |
 |--------|----------|-------------|----------------|
-| [e-den](plugins/e-den/) | 1.2.1 | Skill e comandi di uso quotidiano (compare-words, scaffolding Django/Quasar, context-graph, status line) | [README](plugins/e-den/README.md) |
+| [e-den](plugins/e-den/) | 1.2.2 | Skill e comandi di uso quotidiano (compare-words, scaffolding Django/Quasar, context-graph, status line) | [README](plugins/e-den/README.md) |
 | [brainflow](plugins/brainflow/) | 1.0.0 | Importa programmi di corso in Brainflow come Flow (MCP remoto + skill) | [README](plugins/brainflow/README.md) |
 
 ---
