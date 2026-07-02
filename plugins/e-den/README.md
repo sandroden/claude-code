@@ -1,9 +1,10 @@
 # e-den
 
 Plugin Claude Code con skill e comandi di uso quotidiano: comparazione di termini
-inglesi, scaffolding di progetti Django/Quasar e configurazione della status line.
+inglesi, scaffolding di progetti Django/Quasar, analisi contesto/costi delle
+sessioni Claude Code e configurazione della status line.
 
-**Versione**: 1.1.5
+**Versione**: 1.2.1
 **Autore**: Alessandro Dentella
 
 ---
@@ -34,6 +35,7 @@ Dopo l'installazione riavvia/riconnetti Claude Code per rendere disponibili coma
 | `compare-words` | Confronta 2-3 termini inglesi spiegando differenze di significato, registro e contesto (analisi in italiano) |
 | `django-startproject` | Scaffold di un nuovo progetto backend Django |
 | `quasar-startproject` | Scaffold di un nuovo frontend Quasar (Vue 3, TypeScript, Pinia, Router, Vite, SCSS) — SPA/SSR/PWA |
+| `context-graph` | Report HTML su crescita del contesto, consumo token (integrale), subagenti e stima costi per modello di un progetto (solo su richiesta esplicita) |
 
 ---
 
