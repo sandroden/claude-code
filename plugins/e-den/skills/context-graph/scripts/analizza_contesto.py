@@ -14,6 +14,8 @@ import json
 import os
 import re
 import sys
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
@@ -96,6 +98,115 @@ def is_real_user(line):
     return True
 
 
+def parse_ts(s):
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def model_family(model):
+    m = (model or "").lower()
+    if "opus" in m:
+        return "Opus"
+    if "sonnet" in m:
+        return "Sonnet"
+    if "haiku" in m:
+        return "Haiku"
+    if "fable" in m:
+        return "Fable"
+    return "Opus"
+
+
+def turn_cost(cr, cc, inp, out, family):
+    p = PRICES.get(family, PRICES["Opus"])
+    return inp * p[0] + out * p[1] + cr * p[2] + cc * p[3]
+
+
+def analyze_subagents(proj_dir, session_id):
+    """Un subagente = un file <session>/subagents/agent-*.jsonl (righe isSidechain).
+    Restituisce, per ciascuno: istante di avvio, footprint (picco-baseline, cioe' il
+    materiale che sarebbe rimasto residente se inlineato), token e costo reali (col
+    modello effettivo, spesso Haiku), e n. turni."""
+    sdir = proj_dir / session_id / "subagents"
+    out = []
+    if not sdir.is_dir():
+        return out
+    for f in sorted(sdir.glob("*.jsonl")):
+        peak = first = tot = 0
+        cost = 0.0
+        models = Counter()
+        start = None
+        nt = 0
+        for raw in open(f, encoding="utf-8"):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                o = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if o.get("type") != "assistant":
+                continue
+            u = o.get("message", {}).get("usage")
+            if not u:
+                continue
+            nt += 1
+            cr = u.get("cache_read_input_tokens", 0) or 0
+            cc = u.get("cache_creation_input_tokens", 0) or 0
+            inp = u.get("input_tokens", 0) or 0
+            outk = u.get("output_tokens", 0) or 0
+            ctx = cr + cc + inp
+            if first == 0:
+                first = ctx
+            peak = max(peak, ctx)
+            tot += ctx + outk
+            fam = model_family(o.get("message", {}).get("model"))
+            models[fam] += 1
+            cost += turn_cost(cr, cc, inp, outk, fam)
+            if start is None:
+                start = parse_ts(o.get("timestamp"))
+        if nt == 0:
+            continue
+        out.append({
+            "start": start,
+            "footprint": max(0, peak - first),
+            "tot": tot,
+            "cost": round(cost, 2),
+            "models": dict(models),
+            "nturns": nt,
+        })
+    return out
+
+
+def attach_subagents(proj_dir, sess):
+    """Colloca ogni subagente sul turno main che lo ha generato, per timestamp
+    (nearest chiamata Agent), fallback sul turno con ts piu' vicino."""
+    subs = analyze_subagents(proj_dir, sess["id"])
+    calls = sess.get("agent_calls", [])   # [(turn, dt, subagent_type)]
+    turn_ts = sess.get("turn_ts", [])     # [(turn, dt)]
+    placed = []
+    for s in subs:
+        st = s["start"]
+        spawn, stype = 1, None
+        if st and calls:
+            turn, _, stype = min(calls, key=lambda c: abs((c[1] - st).total_seconds())
+                                 if c[1] else 1e18)
+            spawn = turn
+        elif st and turn_ts:
+            spawn = min(turn_ts, key=lambda c: abs((c[1] - st).total_seconds())
+                        if c[1] else 1e18)[0]
+        placed.append([spawn, s["footprint"], s["tot"], s["cost"], stype or "?",
+                       s["models"]])
+    placed.sort(key=lambda x: x[0])
+    sess["subs"] = placed
+    sess["sub_n"] = len(placed)
+    sess["sub_tot"] = sum(p[2] for p in placed)
+    sess["sub_cost"] = round(sum(p[3] for p in placed), 2)
+
+
 def first_prompt_snippet(line, n=38):
     c = line.get("message", {}).get("content")
     if isinstance(c, list):
@@ -109,6 +220,7 @@ def analyze_file(path):
     """Estrae i dati di una sessione dal .jsonl. None se non ha turni assistant."""
     aturn = 0
     pts, cum, comp, marks = [], [], [], []
+    turn_ts, agent_calls = [], []
     tot_out = tot_cr = total = 0
     snippet = ""
     with open(path, encoding="utf-8") as fh:
@@ -140,6 +252,13 @@ def analyze_file(path):
                 total += ctx + out
                 tot_out += out
                 tot_cr += cr
+                ts = parse_ts(l.get("timestamp"))
+                turn_ts.append((aturn, ts))
+                for b in l.get("message", {}).get("content", []) or []:
+                    if (isinstance(b, dict) and b.get("type") == "tool_use"
+                            and b.get("name") == "Agent"):
+                        agent_calls.append(
+                            (aturn, ts, b.get("input", {}).get("subagent_type")))
     if aturn == 0:
         return None
     maxctx = max(p[1] for p in pts)
@@ -169,6 +288,8 @@ def analyze_file(path):
         "cum": cum,
         "comp": comp,
         "mtime": path.stat().st_mtime,
+        "turn_ts": turn_ts,
+        "agent_calls": agent_calls,
     }
 
 
@@ -181,6 +302,7 @@ def scan(proj_dir, min_turns=1):
             print(f"# skip {f.name}: {e}", file=sys.stderr)
             continue
         if s and s["turns"] >= min_turns:
+            attach_subagents(proj_dir, s)
             out.append(s)
     out.sort(key=lambda s: s["turns"], reverse=True)
     return out
@@ -189,17 +311,19 @@ def scan(proj_dir, min_turns=1):
 def cmd_list(sessions, as_json):
     if as_json:
         light = [{k: s[k] for k in ("id", "id8", "snippet", "turns", "n_user",
-                                    "total", "maxctx", "integral_x", "mtime")}
+                                    "total", "maxctx", "integral_x", "mtime",
+                                    "sub_n", "sub_tot", "sub_cost")}
                  for s in sessions]
         print(json.dumps(light, ensure_ascii=False))
         return
     fmt = lambda n: (f"{n/1e6:.1f}M" if n >= 1e6 else
                      f"{n/1e3:.0f}k" if n >= 1e3 else str(n))
     print(f"{'#':>2}  {'id':8}  {'turni':>6}  {'prompt':>6}  "
-          f"{'picco':>7}  {'consumo':>8}  primo prompt")
+          f"{'picco':>7}  {'consumo':>8}  {'subag':>10}  primo prompt")
     for i, s in enumerate(sessions, 1):
+        sub = f"{s['sub_n']}/{fmt(s['sub_tot'])}" if s.get("sub_n") else "-"
         print(f"{i:>2}  {s['id8']:8}  {s['turns']:>6}  {s['n_user']:>6}  "
-              f"{fmt(s['maxctx']):>7}  {fmt(s['total']):>8}  {s['snippet']}")
+              f"{fmt(s['maxctx']):>7}  {fmt(s['total']):>8}  {sub:>10}  {s['snippet']}")
 
 
 # --------------------------------------------------------------------------- #
@@ -225,13 +349,23 @@ def build_data(selected, featured):
             "pts": s["pts"],
             "cum": s["cum"],
             "comp": s["comp"],
+            "subs": [p[:5] for p in s.get("subs", [])],
+            "sub_n": s.get("sub_n", 0),
+            "sub_tot": s.get("sub_tot", 0),
+            "sub_cost": s.get("sub_cost", 0.0),
         }
     f = featured
+    fam = Counter()
+    for p in f.get("subs", []):
+        for k, v in (p[5] if len(p) > 5 else {}).items():
+            fam[k] += v
     D["stats"] = {
         "turns": f["turns"], "maxctx": f["maxctx"], "slope": f["slope"],
         "tot_out": f["tot_out"], "tot_cr": f["tot_cr"], "ratio": f["ratio"],
         "total": f["total"], "n_user": f["n_user"], "bounce": f["bounce"],
         "integral_x": f["integral_x"],
+        "sub_n": f.get("sub_n", 0), "sub_tot": f.get("sub_tot", 0),
+        "sub_cost": f.get("sub_cost", 0.0), "sub_models": dict(fam),
     }
     return D
 
@@ -318,14 +452,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
  <div class="panel">
   <h2>3 &middot; Un prompt utente, tanti rimbalzi</h2>
-  <p class="note">Sessione A. Ogni <b style="color:var(--ok)">barretta verde</b> &egrave; un <b>prompt utente</b> (Enter): <span id="d-np"></span> prompt &rarr; <span id="d-ft2"></span> turni. Hover per il <b>prompt #N</b>; <b>trascina</b> per l'integrale (token) di un intervallo.</p>
+  <p class="note">Sessione A. Ogni <b style="color:var(--ok)">barretta verde</b> &egrave; un <b>prompt utente</b> (Enter): <span id="d-np"></span> prompt &rarr; <span id="d-ft2"></span> turni. Hover per il <b>prompt #N</b>; <b>trascina</b> per l'integrale (token) di un intervallo. Se la sessione delega, i <b style="color:var(--warn)">triangoli arancioni</b> sono gli spawn di subagenti e la curva arancione stima il contesto <b>senza</b> delega.</p>
   <div class="chartbox"><canvas id="c3"></canvas></div>
   <div class="readout" id="c3read"><span class="hint">&harr; Trascina sul grafico per l'integrale di un intervallo.</span></div>
  </div>
 
  <div class="panel">
   <h2>4 &middot; Consumo (integrale) e costo API</h2>
-  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
+  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> (se presente) somma il consumo dei subagenti, che vivono in transcript separati. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
   <label class="chk"><input type="checkbox" id="tgl4"> mostra i prompt utente (Enter) &mdash; Sessione A</label>
   <div class="chartbox"><canvas id="c4"></canvas></div>
   <div class="readout" id="c4read"><span class="hint">&harr; Trascina sul grafico per il costo dell'intervallo, per modello.</span></div>
@@ -339,6 +473,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
    <li class="warn"><b>Contesto di picco &ne; consumo.</b> Picco <b id="r-max"></b>, ma consumo totale <b id="r-total"></b> di token: <b id="r-int"></b> volte il picco. L'occupazione della finestra nasconde il costo vero, che &egrave; l'integrale.</li>
    <li class="ok"><b>Il costo non segue i token.</b> La Sessione A consuma <b id="r-total2"></b> di token ma costa solo <b id="r-costopus"></b> su Opus &mdash; molto meno del prezzo input pieno. Il <code>cache_read</code> (la gran parte del volume) costa ~1/10, quindi <b>abbatte il costo</b>. Stesso lavoro su Sonnet ~<b id="r-costsonnet"></b>, su Haiku ~<b id="r-costhaiku"></b>.</li>
    <li><b>Cresce quadraticamente.</b> Contesto ~lineare (<b id="r-slope"></b> tok/turno) &rarr; consumo e costo (l'integrale) crescono col <b>quadrato</b> dei turni. Le ultime interazioni costano molto pi&ugrave; delle prime a parit&agrave; di lavoro.</li>
+   <li class="vio" id="li-sub"><b>Subagenti = costo nascosto ma isolato.</b> <span id="r-sub"></span></li>
    <li class="ok"><b>Cosa farci.</b> (1) Compattare / aprire sessioni nuove ai cambi di task abbassa l'altezza e quindi area e costo. (2) Ridurre i rimbalzi inutili taglia l'integrale. (3) Delegare a subagenti isola il contesto pesante. (4) Il caching &egrave; gi&agrave; il maggior risparmio: non invalidarlo (evitare di cambiare tool/prompt di sistema a met&agrave; sessione).</li>
   </ul>
  </div>
@@ -369,14 +504,34 @@ function costRange(a,b,model){const p=PRICES[model];const cr=preCR[b]-preCR[a-1]
 const cumCostOpus=[]; {let c=0; for(let i=0;i<AC.length;i++){const r=AC[i];const p=PRICES.Opus;c+=r[3]*p[0]+r[4]*p[1]+r[1]*p[2]+r[2]*p[3];cumCostOpus.push({x:r[0],y:c});}}
 const totOpus=costRange(1,maxT,'Opus'),totSonnet=costRange(1,maxT,'Sonnet'),totHaiku=costRange(1,maxT,'Haiku');
 
+// --- subagenti della sessione A: [spawn, footprint, tot, cost, type] ---
+const subs=(S[A].subs||[]).slice().sort((a,b)=>a[0]-b[0]);
+const hasSub=subs.length>0;
+// controfattuale "senza subagenti": il footprint (materiale accumulato) sarebbe
+// rimasto residente nel contesto main dal turno di spawn in poi
+let _cf=0,_si=0; const cfPts=S[A].pts.map(p=>{const t=p[0];while(_si<subs.length&&subs[_si][0]<=t){_cf+=subs[_si][1];_si++;}return{x:t,y:p[1]+_cf};});
+// consumo di sistema cumulativo = main + token dei subagenti (aggiunti allo spawn)
+let _sc=0,_sj=0; const sysCum=S[A].cum.map(p=>{const t=p[0];while(_sj<subs.length&&subs[_sj][0]<=t){_sc+=subs[_sj][2];_sj++;}return{x:t,y:p[1]+_sc};});
+// area extra del controfattuale = consumo aggiuntivo stimato se il lavoro fosse inlineato
+let cfExtra=0; for(let i=0;i<cfPts.length;i++)cfExtra+=cfPts[i].y-S[A].pts[i][1];
+const subTok=ST.sub_tot||0,subCost=ST.sub_cost||0,subN=ST.sub_n||0,subModels=ST.sub_models||{};
+const subBars=()=>({id:'sb',afterDatasetsDraw:ch=>{const c=ch.ctx,ca=ch.chartArea,xs=ch.scales.x;c.save();subs.forEach(s=>{const x=xs.getPixelForValue(s[0]);if(x<ca.left||x>ca.right)return;c.strokeStyle='rgba(255,159,67,.4)';c.setLineDash([3,3]);c.lineWidth=1;c.beginPath();c.moveTo(x,ca.top);c.lineTo(x,ca.bottom);c.stroke();c.setLineDash([]);c.fillStyle='#ff9f43';c.beginPath();c.moveTo(x,ca.top+8);c.lineTo(x-5,ca.top);c.lineTo(x+5,ca.top);c.closePath();c.fill();});c.restore();}});
+
 // testi dinamici
 const q=id=>document.getElementById(id);
 [['d-ft',ST.turns],['d-ft2',ST.turns],['d-np',marks.length],['d-ns',keys.length]].forEach(([i,v])=>{if(q(i))q(i).textContent=v;});
 {const hb=keys.map(k=>S[k]).reduce((a,b)=>((b.turns/Math.max(1,b.n_user))>(a.turns/Math.max(1,a.n_user))?b:a));
  if(q('d-hb'))q('d-hb').textContent=`${hb.label.split(' —')[0].trim()}: ${hb.n_user} prompt → ${hb.turns} turni`;}
+// riflessione subagenti
+if(hasSub){const mm=Object.entries(subModels).map(([m,n])=>`${m} ${n}t`).join(', ');
+ const cheap=(subModels.Haiku||0)+(subModels.Sonnet||0);
+ const note=cheap?' (in parte su modelli pi&ugrave; economici, es. Haiku)':'';
+ q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}], <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> &mdash; costo reale ~<b>${usd(subCost)}</b>${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto (triangoli arancioni = spawn). Se quel lavoro fosse stato <b>inlineato</b>, il materiale sarebbe rimasto residente e riletto ad ogni turno successivo: ~<b>${fmt(cfExtra)}</b> token di consumo aggiuntivo stimato (curva arancione tratteggiata). È il motivo per cui delegare tiene bassa la curva.`;}
+else{const li=q('li-sub');if(li)li.style.display='none';}
 
 // cards
 const cards=[[String(ST.n_user),'prompt utente (Sessione A)',''],[String(ST.turns),'turni generati',''],[fmt(ST.maxctx),'contesto di picco',''],[fmt(ST.total),'token consumati',' hot'],[ST.integral_x+'&times;','consumo / picco',' hot'],[usd(totOpus),'costo Sessione A (Opus)',' cost']];
+if(subN)cards.push([fmt(subTok),`token subagenti (${subN}, isolati)`,' hot'],[usd(subCost),'costo subagenti',' cost']);
 document.getElementById('cards').innerHTML=cards.map(c=>`<div class="card${c[2]}"><div class="n">${c[0]}</div><div class="l">${c[1]}</div></div>`).join('');
 const set=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
 set('r-turns',ST.turns);set('r-user',ST.n_user);set('r-bounce',ST.bounce.toFixed(0));set('r-max',fmt(ST.maxctx));set('r-total',fmt(ST.total));set('r-total2',fmt(ST.total));set('r-int',ST.integral_x+'&times;');set('r-slope','~'+ST.slope);
@@ -397,7 +552,9 @@ new Chart(document.getElementById('c2'),{type:'line',data:{datasets:[mk(1,'cache
 
 // chart 3
 const sel3={a:null,b:null,drag:false};
-const c3=new Chart(document.getElementById('c3'),{type:'line',data:{datasets:[{label:'contesto',data:S[A].pts.map(p=>({x:p[0],y:p[1]})),borderColor:'#4fb0ff',backgroundColor:'#4fb0ff22',fill:true,borderWidth:2,pointRadius:0,tension:.15},{label:'| = prompt utente ('+marks.length+')',data:[],borderColor:'#39d98a',backgroundColor:'#39d98a'}]},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{filter:it=>it.datasetIndex===0,callbacks:{label:c=>'contesto: '+fmt(c.parsed.y)+' @ turno '+c.parsed.x,afterLabel:c=>'prompt utente #'+promptOf(c.parsed.x)}}},scales:axes('turno dell\'assistente','token in contesto',v=>fmt(v))},plugins:[enterBars(),makeBand(sel3)]});
+const c3ds=[{label:'contesto',data:S[A].pts.map(p=>({x:p[0],y:p[1]})),borderColor:'#4fb0ff',backgroundColor:'#4fb0ff22',fill:true,borderWidth:2,pointRadius:0,tension:.15},{label:'| = prompt utente ('+marks.length+')',data:[],borderColor:'#39d98a',backgroundColor:'#39d98a'}];
+if(hasSub)c3ds.push({label:'▲ '+subN+' subagenti · senza subag. (stima)',data:cfPts,borderColor:'#ff9f43',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.15,fill:false});
+const c3=new Chart(document.getElementById('c3'),{type:'line',data:{datasets:c3ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{filter:it=>it.datasetIndex===0,callbacks:{label:c=>'contesto: '+fmt(c.parsed.y)+' @ turno '+c.parsed.x,afterLabel:c=>'prompt utente #'+promptOf(c.parsed.x)}}},scales:axes('turno dell\'assistente','token in contesto',v=>fmt(v))},plugins:[enterBars(),makeBand(sel3),subBars()]});
 const r3=document.getElementById('c3read');
 function px2turn(ch,e){return Math.max(1,Math.min(maxT,Math.round(ch.scales.x.getValueForPixel(e.offsetX))));}
 function show3(){if(sel3.a==null||sel3.b==null){r3.innerHTML='<span class="hint">&harr; Trascina sul grafico per l\'integrale di un intervallo.</span>';return;}let a=Math.min(sel3.a,sel3.b),b=Math.max(sel3.a,sel3.b);const np=marks.filter(m=>m>=a&&m<=b).length;r3.innerHTML=`Turni <b>${a}–${b}</b> · prompt <b>#${promptOf(a)}→#${promptOf(b)}</b> (${np} prompt)&nbsp;&rarr;&nbsp;integrale ≈ <b>${fmt(integralCtx(a,b))} token</b> <span class="hint">(area sotto la curva)</span>`;}
@@ -410,6 +567,7 @@ let show4=false;
 const eb4={id:'eb4',afterDatasetsDraw:ch=>{if(!show4)return;const c=ch.ctx,ca=ch.chartArea,xs=ch.scales.x;c.save();marks.forEach(m=>{const x=xs.getPixelForValue(m);if(x<ca.left||x>ca.right)return;c.strokeStyle='rgba(57,217,138,.22)';c.lineWidth=1;c.beginPath();c.moveTo(x,ca.top);c.lineTo(x,ca.bottom);c.stroke();c.fillStyle='#39d98a';c.fillRect(x-2,ca.bottom-9,4,9);});c.restore();}};
 const sel4={a:null,b:null,drag:false};
 const ds4=keys.map((k,i)=>({label:S[k].label,data:S[k].cum.map(p=>({x:p[0],y:p[1]})),borderColor:palette[i%6],backgroundColor:palette[i%6]+'22',fill:k===A,borderWidth:k===A?2.5:2,pointRadius:0,tension:.1,yAxisID:'y'}));
+if(hasSub)ds4.push({label:'totale sistema (main+subag)',data:sysCum,borderColor:'#5adfd0',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y'});
 ds4.push({label:'costo Opus (Sessione A, $)',data:cumCostOpus,borderColor:'#ffd24f',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
 const c4=new Chart(document.getElementById('c4'),{type:'line',data:{datasets:ds4},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?'costo Opus: '+usd(c.parsed.y):c.dataset.label.split(' (')[0]+': '+fmt(c.parsed.y)+' tok'}}},scales:{x:{type:'linear',title:{display:true,text:'turno dell\'assistente',color:'#8aa0b3'},ticks:{color:'#8aa0b3'},grid:{color:'#1e2b38'}},y:{position:'left',title:{display:true,text:'token consumati (cumulativo)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y1:{position:'right',title:{display:true,text:'costo cumulativo Opus ($)',color:'#ffd24f'},ticks:{color:'#ffd24f',callback:v=>'$'+v.toFixed(0)},grid:{drawOnChartArea:false}}}},plugins:[eb4,makeBand(sel4)]});
 document.getElementById('tgl4').addEventListener('change',e=>{show4=e.target.checked;c4.render();});
@@ -424,8 +582,8 @@ c4.canvas.addEventListener('mousemove',e=>{if(!sel4.drag)return;sel4.b=px2turn(c
 window.addEventListener('mouseup',()=>{if(sel4.drag){sel4.drag=false;if(sel4.a===sel4.b){sel4.a=sel4.b=null;c4.render();}show4read();}});
 
 // tabella
-let rows='<tr><th>Sessione</th><th>Prompt</th><th>Turni</th><th>Picco</th><th>Consumo</th><th>Costo Opus</th></tr>';
-keys.forEach(k=>{const s=S[k];const peak=Math.max(...s.pts.map(p=>p[1]));let c=0;s.comp.forEach(r=>{const p=PRICES.Opus;c+=r[3]*p[0]+r[4]*p[1]+r[1]*p[2]+r[2]*p[3];});rows+=`<tr><td>${s.label}</td><td>${s.n_user}</td><td>${s.turns}</td><td>${fmt(peak)}</td><td class="big">${fmt(s.total)}</td><td class="cost">${usd(c)}</td></tr>`;});
+let rows='<tr><th>Sessione</th><th>Prompt</th><th>Turni</th><th>Picco</th><th>Consumo</th><th>Subag.</th><th>Costo Opus</th></tr>';
+keys.forEach(k=>{const s=S[k];const peak=Math.max(...s.pts.map(p=>p[1]));let c=0;s.comp.forEach(r=>{const p=PRICES.Opus;c+=r[3]*p[0]+r[4]*p[1]+r[1]*p[2]+r[2]*p[3];});const sub=s.sub_n?`${fmt(s.sub_tot)} <span style="color:var(--mut)">(${s.sub_n})</span>`:'—';rows+=`<tr><td>${s.label}</td><td>${s.n_user}</td><td>${s.turns}</td><td>${fmt(peak)}</td><td class="big">${fmt(s.total)}</td><td>${sub}</td><td class="cost">${usd(c)}</td></tr>`;});
 document.getElementById('bt').innerHTML=rows;
 </script>
 </body>

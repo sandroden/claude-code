@@ -87,6 +87,33 @@ agent-browser close
 Verifica: 4 grafici presenti, card popolate, tabella riepilogativa, e (opzionale)
 i drag sui grafici 3 e 4 via `eval` simulando i MouseEvent con `offsetX`.
 
+## Subagenti (tool `Agent`)
+
+I subagenti hanno **transcript separati**: `<progetto>/<session-id>/subagents/agent-*.jsonl`
+(un file per invocazione, righe `isSidechain`, `usage` proprio, spesso su un
+**modello diverso** — es. Haiku). Il file principale della sessione **non** contiene
+il loro consumo interno: nel main compaiono solo come un turno `Agent` e come il
+risultato che rientra nel contesto. Lo script li recupera e li collega al turno di
+spawn per **timestamp** (chiamata `Agent` più vicina).
+
+Il report, per la sessione in evidenza, mostra:
+
+- **triangoli arancioni** sul grafico 3 = spawn dei subagenti;
+- curva **«senza subagenti (stima)»** (grafico 3): controfattuale = il *footprint*
+  del subagente (picco − baseline, cioè il materiale accumulato) reso **residente**
+  nel contesto main dallo spawn in poi, quindi riletto ad ogni turno successivo.
+  È una **stima** del costo evitato delegando (non una misura esatta);
+- curva **«totale sistema»** (grafico 4) = consumo main + token dei subagenti;
+- card, colonna «Subag.» in tabella e una riflessione con costo reale per modello.
+
+Assunzioni/limiti: mapping per timestamp; footprint come proxy del residente;
+i subagenti annidati (un subagente che ne lancia un altro) non vengono ricorsi.
+Se una sessione non usa subagenti, tutti questi elementi spariscono automaticamente.
+
+Per un confronto *esatto* con/senza subagenti serve un esperimento controllato
+(stesso prompt eseguito due volte, una vietando la delega): il report da solo
+mostra il controfattuale **stimato**, non due run reali.
+
 ## Come è definito un "prompt utente" reale
 
 Riga `type=="user"` con contenuto testo/stringa o immagine, **escludendo**:
