@@ -38,24 +38,37 @@ Lo script è `scripts/analizza_contesto.py` (solo stdlib, ha `-h`). Percorso com
   nome, es. `desica-teams`), oppure `--dir <cartella-transcript>`.
 - Se l'utente non specifica quale progetto, chiediglielo.
 
-### 2. Elenca le sessioni e proponi la scelta
+### 2. Elenca le sessioni e proponi la scelta (SEMPRE)
 
-Esegui **sempre** prima `--list` per vedere le sessioni ordinate per lunghezza:
+Esegui `--list` e **mostra la tabella all'utente ad ogni invocazione**, anche la
+seconda/terza volta nella stessa sessione: non riusare silenziosamente scelte
+precedenti, ri-presenta sempre la tabella e lascia scegliere.
 
 ```bash
 python3 <script> --project <nome> --list
 ```
 
-Mostra all'utente le prime righe (turni, prompt, picco, consumo, primo prompt) e
-**proponi una scelta** con `AskUserQuestion`, tipicamente:
+L'output include già la tabella con la colonna `#` e gli **hint di sintassi**
+(`--top`, `--sessions <#|id>`, `--featured <#|id>`): rilancia quegli hint
+all'utente così può indicare la scelta col numero.
+
+Mostra all'utente la tabella **con la colonna `#`** (turni, prompt, picco,
+consumo, subag, primo prompt) e **proponi una scelta** con `AskUserQuestion`,
+tipicamente:
 
 - **Le 6 più lunghe** (default consigliato — buon compromesso di leggibilità).
 - **Solo la più lunga** (analisi mono-sessione).
-- **Seleziona sessioni specifiche** (l'utente indica gli id a 8 caratteri).
+- **Seleziona sessioni specifiche** (l'utente indica i `#` o gli id a 8 caratteri).
 - **Tutte** (se sono poche).
 
-La sessione più lunga tra quelle scelte diventa la "Sessione A" in evidenza
-(grafici 2/3/4, card, riflessioni).
+Le sessioni scelte sono disegnate **indipendenti** (una curva ciascuna, non
+sommate). I grafici di **dettaglio** (2/3/5), le card e le riflessioni si
+riferiscono a **una** sessione, la "Sessione A".
+
+**Chi è la Sessione A**: di default la più lunga tra le scelte. Ma se una sessione
+meno lunga è più interessante (es. l'unica con subagenti), fai notare la cosa e
+chiedi se fissarla con `--featured`, che accetta il **numero `#`** della lista o
+l'id (es. `--featured 2`). Se non è già tra le scelte, viene aggiunta.
 
 ### 3. Genera il report
 
@@ -64,6 +77,8 @@ La sessione più lunga tra quelle scelte diventa la "Sessione A" in evidenza
 python3 <script> --project <nome> --top 6 --out <path>/context-graph.html
 # sessioni scelte a mano
 python3 <script> --project <nome> --sessions 65ab0ff1 641bfc8f --out <out>
+# protagonista fissata via # (o id): utile per mettere in evidenza chi delega
+python3 <script> --project <nome> --top 6 --featured 2 --out <out>
 ```
 
 Opzioni utili: `--name "nome leggibile"` (mostrato nel report),

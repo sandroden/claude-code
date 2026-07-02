@@ -313,6 +313,21 @@ def scan(proj_dir, min_turns=1):
     return out
 
 
+def pick_featured(spec, sessions):
+    """Risolve --featured: numero # della lista (1-based, ordine per turni) o id."""
+    spec = spec.strip().lstrip("#")
+    if spec.isdigit():
+        i = int(spec) - 1
+        if not 0 <= i < len(sessions):
+            sys.exit(f"--featured {spec}: fuori range (1..{len(sessions)})")
+        return sessions[i]
+    hits = [s for s in sessions
+            if spec in (s["id"], s["id8"]) or s["id"].startswith(spec)]
+    if not hits:
+        sys.exit(f"--featured {spec}: nessuna sessione corrisponde")
+    return hits[0]
+
+
 def cmd_list(sessions, as_json):
     if as_json:
         light = [{k: s[k] for k in ("id", "id8", "snippet", "turns", "n_user",
@@ -329,6 +344,13 @@ def cmd_list(sessions, as_json):
         sub = f"{s['sub_n']}/{fmt(s['sub_tot'])}" if s.get("sub_n") else "-"
         print(f"{i:>2}  {s['id8']:8}  {s['turns']:>6}  {s['n_user']:>6}  "
               f"{fmt(s['maxctx']):>7}  {fmt(s['total']):>8}  {sub:>10}  {s['snippet']}")
+    print()
+    print("Come scegliere (# = numero qui sopra, oppure id a 8 caratteri):")
+    print("  --top N                le N piu' lunghe            (es. --top 6)")
+    print("  --sessions <#|id> ...  sessioni specifiche         (es. --sessions 2 1 5)")
+    print("  --featured <#|id>      protagonista dei grafici    (es. --featured 2)")
+    print("                         di dettaglio 2/3/5 e card; default = la piu' lunga")
+    print("  colonna 'subag' N/tok  = sessioni che delegano a subagenti (grafici 3/4/5)")
 
 
 # --------------------------------------------------------------------------- #
@@ -636,9 +658,14 @@ def main():
     src.add_argument("--cwd", help="working dir del progetto da codificare (default: cwd corrente)")
     ap.add_argument("--list", action="store_true", help="elenca le sessioni ordinate per turni ed esci")
     ap.add_argument("--json", action="store_true", help="con --list: output JSON")
-    ap.add_argument("--sessions", nargs="+", metavar="ID",
-                    help="id (anche prefisso a 8 char) delle sessioni da includere")
+    ap.add_argument("--sessions", nargs="+", metavar="N|ID",
+                    help="sessioni da includere: numero # della lista o id "
+                         "(es. --sessions 2 1 5)")
     ap.add_argument("--top", type=int, metavar="N", help="usa le N sessioni piu' lunghe")
+    ap.add_argument("--featured", metavar="N|ID",
+                    help="sessione protagonista dei grafici di dettaglio (2/3/5) e "
+                         "delle card: accetta il numero # della lista o l'id "
+                         "(default: la piu' lunga). Se non e' tra le scelte viene aggiunta.")
     ap.add_argument("--min-turns", type=int, default=2,
                     help="ignora sessioni con meno di N turni (default 2)")
     ap.add_argument("--out", default="context-graph.html", help="file HTML di output")
@@ -656,18 +683,23 @@ def main():
 
     chosen = sessions
     if args.sessions:
-        wanted = set(args.sessions)
-        chosen = [s for s in sessions
-                  if s["id"] in wanted or s["id8"] in wanted
-                  or any(s["id"].startswith(w) for w in wanted)]
-        if not chosen:
-            sys.exit("nessuna sessione corrisponde a --sessions")
+        chosen, seen = [], set()
+        for tok in args.sessions:          # ogni token: # della lista o id
+            s = pick_featured(tok, sessions)
+            if id(s) not in seen:
+                seen.add(id(s))
+                chosen.append(s)
     elif args.top:
         chosen = sessions[:args.top]
     else:
         chosen = sessions[:6]
 
-    featured = max(chosen, key=lambda s: s["turns"])
+    if args.featured:
+        featured = pick_featured(args.featured, sessions)
+        if featured not in chosen:
+            chosen = [featured] + chosen
+    else:
+        featured = max(chosen, key=lambda s: s["turns"])
     D = build_data(chosen, featured)
     name = args.name or default_name(proj.name)
     html = render_html(D, name)
