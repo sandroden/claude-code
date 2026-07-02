@@ -1,6 +1,6 @@
 ---
 name: compare-words
-description: Analyze and compare English words or terms (2-3 at a time). Trigger: user asks "X vs Y", "X versus Y", or wants to understand subtle differences between similar English terms.
+description: 'Analyze and compare English words or terms (2-3 at a time). Trigger: user asks "X vs Y", "X versus Y", or wants to understand subtle differences between similar English terms.'
 model: haiku
 ---
 
