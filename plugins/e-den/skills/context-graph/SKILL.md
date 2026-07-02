@@ -25,6 +25,11 @@ Non attivarla in automatico su altri argomenti.
 
 ## Procedura
 
+> **REGOLA FERREA**: non generare **mai** il report senza aver prima (a) eseguito
+> `--list`, (b) mostrato all'utente la tabella **e** il blocco «Come scegliere»,
+> (c) ottenuto la sua scelta. Vale ad **ogni** invocazione, anche ripetuta. Se
+> l'utente non specifica nulla, mostra la lista e chiedi — non partire in autonomia.
+
 Lo script è `scripts/analizza_contesto.py` (solo stdlib, ha `-h`). Percorso completo:
 `${CLAUDE_PLUGIN_ROOT}/skills/context-graph/scripts/analizza_contesto.py`
 (se la var non è disponibile, è la cartella di questo file + `scripts/`).
