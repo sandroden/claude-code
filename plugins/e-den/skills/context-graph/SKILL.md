@@ -98,13 +98,19 @@ spawn per **timestamp** (chiamata `Agent` più vicina).
 
 Il report, per la sessione in evidenza, mostra:
 
-- **triangoli arancioni** sul grafico 3 = spawn dei subagenti;
-- curva **«senza subagenti (stima)»** (grafico 3): controfattuale = il *footprint*
-  del subagente (picco − baseline, cioè il materiale accumulato) reso **residente**
-  nel contesto main dallo spawn in poi, quindi riletto ad ogni turno successivo.
-  È una **stima** del costo evitato delegando (non una misura esatta);
-- curva **«totale sistema»** (grafico 4) = consumo main + token dei subagenti;
-- card, colonna «Subag.» in tabella e una riflessione con costo reale per modello.
+- **grafico 3** — barre (asse destro, colore = modello) col consumo **reale** di
+  ogni subagente allo spawn; curva tratteggiata **«contesto se inlineato (stima)»**:
+  controfattuale = il *footprint* del subagente (picco − baseline, il materiale
+  accumulato) reso **residente** nel contesto main dallo spawn in poi e riletto ad
+  ogni turno. È una **stima** del costo evitato delegando, non una misura esatta;
+- **grafico 4** — curva «totale sistema» (token main + subagenti) sull'asse token;
+  sull'asse costi: «costo reale (main)» e «costo se SENZA delega (stima)» — il
+  divario è il risparmio della delega; il drag mostra anche il costo controfattuale
+  dell'intervallo;
+- **grafico 5** — pannello dedicato: una barra per subagente (lunghezza = token,
+  colore = modello) col dettaglio isolato che non appare nel transcript principale;
+- card (token/costo subagenti, costo controfattuale, risparmio), colonna «Subag.»
+  in tabella e una riflessione con il confronto costi.
 
 Assunzioni/limiti: mapping per timestamp; footprint come proxy del residente;
 i subagenti annidati (un subagente che ne lancia un altro) non vengono ricorsi.

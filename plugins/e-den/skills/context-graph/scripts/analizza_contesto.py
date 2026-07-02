@@ -188,6 +188,7 @@ def attach_subagents(proj_dir, sess):
     calls = sess.get("agent_calls", [])   # [(turn, dt, subagent_type)]
     turn_ts = sess.get("turn_ts", [])     # [(turn, dt)]
     placed = []
+    fam = Counter()
     for s in subs:
         st = s["start"]
         spawn, stype = 1, None
@@ -198,13 +199,17 @@ def attach_subagents(proj_dir, sess):
         elif st and turn_ts:
             spawn = min(turn_ts, key=lambda c: abs((c[1] - st).total_seconds())
                         if c[1] else 1e18)[0]
+        fam.update(s["models"])
+        modelstr = "/".join(sorted(s["models"], key=lambda m: -s["models"][m]))
+        # [spawn, footprint, tot, cost, type, nturns, modelstr]
         placed.append([spawn, s["footprint"], s["tot"], s["cost"], stype or "?",
-                       s["models"]])
+                       s["nturns"], modelstr or "?"])
     placed.sort(key=lambda x: x[0])
     sess["subs"] = placed
     sess["sub_n"] = len(placed)
     sess["sub_tot"] = sum(p[2] for p in placed)
     sess["sub_cost"] = round(sum(p[3] for p in placed), 2)
+    sess["sub_models"] = dict(fam)
 
 
 def first_prompt_snippet(line, n=38):
@@ -349,23 +354,20 @@ def build_data(selected, featured):
             "pts": s["pts"],
             "cum": s["cum"],
             "comp": s["comp"],
-            "subs": [p[:5] for p in s.get("subs", [])],
+            "subs": [p[:7] for p in s.get("subs", [])],
             "sub_n": s.get("sub_n", 0),
             "sub_tot": s.get("sub_tot", 0),
             "sub_cost": s.get("sub_cost", 0.0),
         }
     f = featured
-    fam = Counter()
-    for p in f.get("subs", []):
-        for k, v in (p[5] if len(p) > 5 else {}).items():
-            fam[k] += v
     D["stats"] = {
         "turns": f["turns"], "maxctx": f["maxctx"], "slope": f["slope"],
         "tot_out": f["tot_out"], "tot_cr": f["tot_cr"], "ratio": f["ratio"],
         "total": f["total"], "n_user": f["n_user"], "bounce": f["bounce"],
         "integral_x": f["integral_x"],
         "sub_n": f.get("sub_n", 0), "sub_tot": f.get("sub_tot", 0),
-        "sub_cost": f.get("sub_cost", 0.0), "sub_models": dict(fam),
+        "sub_cost": f.get("sub_cost", 0.0),
+        "sub_models": f.get("sub_models", {}),
     }
     return D
 
@@ -452,18 +454,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
  <div class="panel">
   <h2>3 &middot; Un prompt utente, tanti rimbalzi</h2>
-  <p class="note">Sessione A. Ogni <b style="color:var(--ok)">barretta verde</b> &egrave; un <b>prompt utente</b> (Enter): <span id="d-np"></span> prompt &rarr; <span id="d-ft2"></span> turni. Hover per il <b>prompt #N</b>; <b>trascina</b> per l'integrale (token) di un intervallo. Se la sessione delega, i <b style="color:var(--warn)">triangoli arancioni</b> sono gli spawn di subagenti e la curva arancione stima il contesto <b>senza</b> delega.</p>
+  <p class="note">Sessione A. Ogni <b style="color:var(--ok)">barretta verde</b> &egrave; un <b>prompt utente</b> (Enter): <span id="d-np"></span> prompt &rarr; <span id="d-ft2"></span> turni. Hover per il <b>prompt #N</b>; <b>trascina</b> per l'integrale (token) di un intervallo. Se la sessione delega: le <b>barre</b> (asse destro, colore = modello) sono il consumo <b>reale</b> di ogni subagente allo spawn; la curva <b style="color:var(--warn)">tratteggiata</b> stima quanto sarebbe cresciuto il contesto <b>senza</b> delega (materiale reso residente).</p>
   <div class="chartbox"><canvas id="c3"></canvas></div>
   <div class="readout" id="c3read"><span class="hint">&harr; Trascina sul grafico per l'integrale di un intervallo.</span></div>
  </div>
 
  <div class="panel">
   <h2>4 &middot; Consumo (integrale) e costo API</h2>
-  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> (se presente) somma il consumo dei subagenti, che vivono in transcript separati. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
+  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> somma i <b>token</b> dei subagenti (asse sx). Sull'asse costi: <b style="color:#ffd24f">costo reale</b> del main e <b style="color:#ff6b81">costo se SENZA delega</b> (stima) &mdash; il divario &egrave; il risparmio della delega. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
   <label class="chk"><input type="checkbox" id="tgl4"> mostra i prompt utente (Enter) &mdash; Sessione A</label>
   <div class="chartbox"><canvas id="c4"></canvas></div>
   <div class="readout" id="c4read"><span class="hint">&harr; Trascina sul grafico per il costo dell'intervallo, per modello.</span></div>
   <table class="bt" id="bt"></table>
+ </div>
+
+ <div class="panel" id="panel5">
+  <h2>5 &middot; Subagenti isolati &mdash; Sessione A</h2>
+  <p class="note">Ogni barra = un subagente (tool <code>Agent</code>): lunghezza = token consumati nel suo contesto <b>separato</b>, colore = modello. Questo lavoro <b>non</b> compare nel transcript principale &mdash; qui lo si vede per intero.</p>
+  <div class="chartbox sm"><canvas id="c5"></canvas></div>
  </div>
 
  <div class="panel">
@@ -515,7 +523,13 @@ let _sc=0,_sj=0; const sysCum=S[A].cum.map(p=>{const t=p[0];while(_sj<subs.lengt
 // area extra del controfattuale = consumo aggiuntivo stimato se il lavoro fosse inlineato
 let cfExtra=0; for(let i=0;i<cfPts.length;i++)cfExtra+=cfPts[i].y-S[A].pts[i][1];
 const subTok=ST.sub_tot||0,subCost=ST.sub_cost||0,subN=ST.sub_n||0,subModels=ST.sub_models||{};
-const subBars=()=>({id:'sb',afterDatasetsDraw:ch=>{const c=ch.ctx,ca=ch.chartArea,xs=ch.scales.x;c.save();subs.forEach(s=>{const x=xs.getPixelForValue(s[0]);if(x<ca.left||x>ca.right)return;c.strokeStyle='rgba(255,159,67,.4)';c.setLineDash([3,3]);c.lineWidth=1;c.beginPath();c.moveTo(x,ca.top);c.lineTo(x,ca.bottom);c.stroke();c.setLineDash([]);c.fillStyle='#ff9f43';c.beginPath();c.moveTo(x,ca.top+8);c.lineTo(x-5,ca.top);c.lineTo(x+5,ca.top);c.closePath();c.fill();});c.restore();}});
+// costo controfattuale Opus cumulativo = costo main + "tassa di residenza"
+// (il materiale accumulato dai subagenti riletto come cache_read ad ogni turno)
+const _pO=PRICES.Opus; let _R=0,_k=0,_extra=0; const cfCost=S[A].cum.map((c,i)=>{const t=c[0];let nf=0;while(_k<subs.length&&subs[_k][0]<=t){nf+=subs[_k][1];_k++;}_R+=nf;_extra+=nf*_pO[3]+_R*_pO[2];return{x:t,y:cumCostOpus[i].y+_extra};});
+const cfCostTot=cfCost.length?cfCost[cfCost.length-1].y:0;
+const sysCostReal=totOpus+subCost;      // costo reale sistema = main + subagenti
+const cfSaving=cfCostTot-sysCostReal;   // risparmio stimato delegando
+const modOf=m=>({Opus:'#c792ea',Sonnet:'#5adfd0',Haiku:'#ffb86b',Fable:'#ff6b81'}[m.split('/')[0]]||'#8aa0b3');
 
 // testi dinamici
 const q=id=>document.getElementById(id);
@@ -526,12 +540,12 @@ const q=id=>document.getElementById(id);
 if(hasSub){const mm=Object.entries(subModels).map(([m,n])=>`${m} ${n}t`).join(', ');
  const cheap=(subModels.Haiku||0)+(subModels.Sonnet||0);
  const note=cheap?' (in parte su modelli pi&ugrave; economici, es. Haiku)':'';
- q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}], <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> &mdash; costo reale ~<b>${usd(subCost)}</b>${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto (triangoli arancioni = spawn). Se quel lavoro fosse stato <b>inlineato</b>, il materiale sarebbe rimasto residente e riletto ad ogni turno successivo: ~<b>${fmt(cfExtra)}</b> token di consumo aggiuntivo stimato (curva arancione tratteggiata). È il motivo per cui delegare tiene bassa la curva.`;}
+ q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}], <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> (barre nel grafico 3 e pannello 5)${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto. Costo reale del sistema ~<b>${usd(sysCostReal)}</b> (main ${usd(totOpus)} + subagenti ${usd(subCost)}). Se quel lavoro fosse stato <b>inlineato</b>, il materiale sarebbe rimasto residente e riletto ad ogni turno &rarr; ~<b>${fmt(cfExtra)}</b> token in pi&ugrave; e un costo stimato di ~<b>${usd(cfCostTot)}</b>: delegare ha risparmiato ~<b>${usd(cfSaving>0?cfSaving:0)}</b> <b>e</b> tenuto basso il contesto.`;}
 else{const li=q('li-sub');if(li)li.style.display='none';}
 
 // cards
 const cards=[[String(ST.n_user),'prompt utente (Sessione A)',''],[String(ST.turns),'turni generati',''],[fmt(ST.maxctx),'contesto di picco',''],[fmt(ST.total),'token consumati',' hot'],[ST.integral_x+'&times;','consumo / picco',' hot'],[usd(totOpus),'costo Sessione A (Opus)',' cost']];
-if(subN)cards.push([fmt(subTok),`token subagenti (${subN}, isolati)`,' hot'],[usd(subCost),'costo subagenti',' cost']);
+if(subN)cards.push([fmt(subTok),`token subagenti (${subN}, isolati)`,' hot'],[usd(subCost),'costo subagenti (reale)',' cost'],[usd(cfCostTot),'costo se SENZA delega (stima)',' hot'],[usd(cfSaving>0?cfSaving:0),'risparmio delegando (stima)',' cost']);
 document.getElementById('cards').innerHTML=cards.map(c=>`<div class="card${c[2]}"><div class="n">${c[0]}</div><div class="l">${c[1]}</div></div>`).join('');
 const set=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
 set('r-turns',ST.turns);set('r-user',ST.n_user);set('r-bounce',ST.bounce.toFixed(0));set('r-max',fmt(ST.maxctx));set('r-total',fmt(ST.total));set('r-total2',fmt(ST.total));set('r-int',ST.integral_x+'&times;');set('r-slope','~'+ST.slope);
@@ -552,9 +566,13 @@ new Chart(document.getElementById('c2'),{type:'line',data:{datasets:[mk(1,'cache
 
 // chart 3
 const sel3={a:null,b:null,drag:false};
-const c3ds=[{label:'contesto',data:S[A].pts.map(p=>({x:p[0],y:p[1]})),borderColor:'#4fb0ff',backgroundColor:'#4fb0ff22',fill:true,borderWidth:2,pointRadius:0,tension:.15},{label:'| = prompt utente ('+marks.length+')',data:[],borderColor:'#39d98a',backgroundColor:'#39d98a'}];
-if(hasSub)c3ds.push({label:'▲ '+subN+' subagenti · senza subag. (stima)',data:cfPts,borderColor:'#ff9f43',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.15,fill:false});
-const c3=new Chart(document.getElementById('c3'),{type:'line',data:{datasets:c3ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{filter:it=>it.datasetIndex===0,callbacks:{label:c=>'contesto: '+fmt(c.parsed.y)+' @ turno '+c.parsed.x,afterLabel:c=>'prompt utente #'+promptOf(c.parsed.x)}}},scales:axes('turno dell\'assistente','token in contesto',v=>fmt(v))},plugins:[enterBars(),makeBand(sel3),subBars()]});
+const c3ds=[{label:'contesto main',data:S[A].pts.map(p=>({x:p[0],y:p[1]})),borderColor:'#4fb0ff',backgroundColor:'#4fb0ff22',fill:true,borderWidth:2,pointRadius:0,tension:.15,order:1},{label:'| = prompt utente ('+marks.length+')',data:[],borderColor:'#39d98a',backgroundColor:'#39d98a'}];
+if(hasSub){
+ c3ds.push({label:'contesto se inlineato, senza delega (stima)',data:cfPts,borderColor:'#ff9f43',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.15,fill:false,order:0});
+ c3ds.push({type:'bar',label:'consumo subagente (isolato) →',data:subs.map(s=>({x:s[0],y:s[2]})),backgroundColor:subs.map(s=>modOf(s[6])),borderWidth:0,barThickness:6,yAxisID:'y1',order:5});
+}
+const c3scales=hasSub?{x:{type:'linear',title:{display:true,text:'turno dell\'assistente',color:'#8aa0b3'},ticks:{color:'#8aa0b3'},grid:{color:'#1e2b38'}},y:{title:{display:true,text:'token in contesto (main)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y1:{position:'right',beginAtZero:true,title:{display:true,text:'consumo del subagente (token)',color:'#ff9f43'},ticks:{color:'#ff9f43',callback:v=>fmt(v)},grid:{drawOnChartArea:false}}}:axes('turno dell\'assistente','token in contesto',v=>fmt(v));
+const c3=new Chart(document.getElementById('c3'),{type:'line',data:{datasets:c3ds},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{callbacks:{label:c=>{const L=c.dataset.label||'';if(L.startsWith('consumo subagente')){const s=subs[c.dataIndex];return `subagente «${s[4]}» · ${s[5]} turni · ${s[6]}`;}if(L.startsWith('contesto se'))return 'senza delega (stima): '+fmt(c.parsed.y);return 'contesto main: '+fmt(c.parsed.y)+' @ turno '+c.parsed.x;},afterLabel:c=>{const L=c.dataset.label||'';if(L.startsWith('consumo subagente')){const s=subs[c.dataIndex];return fmt(s[2])+' token · '+usd(s[3]);}return c.datasetIndex===0?('prompt utente #'+promptOf(c.parsed.x)):'';}}}},scales:c3scales},plugins:[enterBars(),makeBand(sel3)]});
 const r3=document.getElementById('c3read');
 function px2turn(ch,e){return Math.max(1,Math.min(maxT,Math.round(ch.scales.x.getValueForPixel(e.offsetX))));}
 function show3(){if(sel3.a==null||sel3.b==null){r3.innerHTML='<span class="hint">&harr; Trascina sul grafico per l\'integrale di un intervallo.</span>';return;}let a=Math.min(sel3.a,sel3.b),b=Math.max(sel3.a,sel3.b);const np=marks.filter(m=>m>=a&&m<=b).length;r3.innerHTML=`Turni <b>${a}–${b}</b> · prompt <b>#${promptOf(a)}→#${promptOf(b)}</b> (${np} prompt)&nbsp;&rarr;&nbsp;integrale ≈ <b>${fmt(integralCtx(a,b))} token</b> <span class="hint">(area sotto la curva)</span>`;}
@@ -568,18 +586,27 @@ const eb4={id:'eb4',afterDatasetsDraw:ch=>{if(!show4)return;const c=ch.ctx,ca=ch
 const sel4={a:null,b:null,drag:false};
 const ds4=keys.map((k,i)=>({label:S[k].label,data:S[k].cum.map(p=>({x:p[0],y:p[1]})),borderColor:palette[i%6],backgroundColor:palette[i%6]+'22',fill:k===A,borderWidth:k===A?2.5:2,pointRadius:0,tension:.1,yAxisID:'y'}));
 if(hasSub)ds4.push({label:'totale sistema (main+subag)',data:sysCum,borderColor:'#5adfd0',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y'});
-ds4.push({label:'costo Opus (Sessione A, $)',data:cumCostOpus,borderColor:'#ffd24f',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
-const c4=new Chart(document.getElementById('c4'),{type:'line',data:{datasets:ds4},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?'costo Opus: '+usd(c.parsed.y):c.dataset.label.split(' (')[0]+': '+fmt(c.parsed.y)+' tok'}}},scales:{x:{type:'linear',title:{display:true,text:'turno dell\'assistente',color:'#8aa0b3'},ticks:{color:'#8aa0b3'},grid:{color:'#1e2b38'}},y:{position:'left',title:{display:true,text:'token consumati (cumulativo)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y1:{position:'right',title:{display:true,text:'costo cumulativo Opus ($)',color:'#ffd24f'},ticks:{color:'#ffd24f',callback:v=>'$'+v.toFixed(0)},grid:{drawOnChartArea:false}}}},plugins:[eb4,makeBand(sel4)]});
+ds4.push({label:'costo Opus reale (main, $)',data:cumCostOpus,borderColor:'#ffd24f',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
+if(hasSub)ds4.push({label:'costo se SENZA delega (stima, $)',data:cfCost,borderColor:'#ff6b81',borderDash:[3,3],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
+const c4=new Chart(document.getElementById('c4'),{type:'line',data:{datasets:ds4},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?c.dataset.label.split(' (')[0]+': '+usd(c.parsed.y):c.dataset.label.split(' (')[0]+': '+fmt(c.parsed.y)+' tok'}}},scales:{x:{type:'linear',title:{display:true,text:'turno dell\'assistente',color:'#8aa0b3'},ticks:{color:'#8aa0b3'},grid:{color:'#1e2b38'}},y:{position:'left',title:{display:true,text:'token consumati (cumulativo)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y1:{position:'right',title:{display:true,text:'costo cumulativo Opus ($)',color:'#ffd24f'},ticks:{color:'#ffd24f',callback:v=>'$'+v.toFixed(0)},grid:{drawOnChartArea:false}}}},plugins:[eb4,makeBand(sel4)]});
 document.getElementById('tgl4').addEventListener('change',e=>{show4=e.target.checked;c4.render();});
 const r4=document.getElementById('c4read');
 function show4read(){if(sel4.a==null||sel4.b==null){r4.innerHTML='<span class="hint">&harr; Trascina sul grafico per il costo dell\'intervallo, per modello.</span>';return;}let a=Math.min(sel4.a,sel4.b),b=Math.max(sel4.a,sel4.b);const tok=S[A].cum[b-1][1]-(a>1?S[A].cum[a-2][1]:0);const co=costRange(a,b,'Opus'),cs=costRange(a,b,'Sonnet'),ch=costRange(a,b,'Haiku');r4.innerHTML=`Turni <b>${a}–${b}</b> (Sessione A) · ${fmt(tok)} token consumati`+
  `<table><tr><th>modello</th><th>costo intervallo</th></tr>`+
  `<tr><td>Opus 4.8</td><td><b>${usd(co)}</b></td></tr>`+
  `<tr><td>Sonnet 5</td><td><b>${usd(cs)}</b></td></tr>`+
- `<tr><td>Haiku 4.5</td><td><b>${usd(ch)}</b></td></tr></table>`;}
+ `<tr><td>Haiku 4.5</td><td><b>${usd(ch)}</b></td></tr>`+
+ (hasSub?`<tr><td>Opus, se SENZA delega (stima)</td><td><b>${usd(cfCost[b-1].y-(a>1?cfCost[a-2].y:0))}</b></td></tr>`:'')+
+ `</table>`;}
 c4.canvas.addEventListener('mousedown',e=>{sel4.a=px2turn(c4,e);sel4.b=sel4.a;sel4.drag=true;c4.render();show4read();});
 c4.canvas.addEventListener('mousemove',e=>{if(!sel4.drag)return;sel4.b=px2turn(c4,e);c4.render();show4read();});
 window.addEventListener('mouseup',()=>{if(sel4.drag){sel4.drag=false;if(sel4.a===sel4.b){sel4.a=sel4.b=null;c4.render();}show4read();}});
+
+// chart 5 — subagenti isolati (barre orizzontali per consumo)
+if(hasSub){
+ const lab=subs.map(s=>`${s[4]} · t${s[0]}`);
+ new Chart(document.getElementById('c5'),{type:'bar',data:{labels:lab,datasets:[{label:'token consumati',data:subs.map(s=>s[2]),backgroundColor:subs.map(s=>modOf(s[6])),borderWidth:0}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const s=subs[c.dataIndex];return [fmt(s[2])+' token · '+s[5]+' turni',s[6]+' · costo reale '+usd(s[3])];}}}},scales:{x:{title:{display:true,text:'token consumati (contesto isolato)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y:{ticks:{color:'#cfe0ee',font:{size:11}},grid:{display:false}}}}});
+}else{const p=document.getElementById('panel5');if(p)p.style.display='none';}
 
 // tabella
 let rows='<tr><th>Sessione</th><th>Prompt</th><th>Turni</th><th>Picco</th><th>Consumo</th><th>Subag.</th><th>Costo Opus</th></tr>';
