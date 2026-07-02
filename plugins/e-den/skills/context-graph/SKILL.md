@@ -116,12 +116,18 @@ i drag sui grafici 3 e 4 via `eval` simulando i MouseEvent con `offsetX`.
 
 ## Subagenti (tool `Agent`)
 
-I subagenti hanno **transcript separati**: `<progetto>/<session-id>/subagents/agent-*.jsonl`
-(un file per invocazione, righe `isSidechain`, `usage` proprio, spesso su un
-**modello diverso** — es. Haiku). Il file principale della sessione **non** contiene
-il loro consumo interno: nel main compaiono solo come un turno `Agent` e come il
-risultato che rientra nel contesto. Lo script li recupera e li collega al turno di
-spawn per **timestamp** (chiamata `Agent` più vicina).
+I subagenti hanno **transcript separati** sotto `<progetto>/<session-id>/subagents/`
+(un file `agent-*.jsonl` per invocazione, righe `isSidechain`, `usage` proprio,
+spesso su un **modello diverso** — es. Haiku). Il file principale della sessione
+**non** contiene il loro consumo interno. Lo script scansiona la cartella in modo
+**ricorsivo**, quindi conta anche gli **agenti dei workflow** (`/workflows`), che si
+annidano in `subagents/workflows/wf_*/agent-*.jsonl` (i `journal.jsonl` sono
+esclusi). Ogni subagente è collocato sul turno main con **timestamp** più vicino
+all'avvio; l'etichetta è il `subagent_type` per i diretti, `wf:…` per i workflow.
+
+⚠️ Senza la ricorsione si perde la gran parte del lavoro delegato: in una sessione
+con `/workflows` gli agenti annidati possono essere l'80-90% del consumo dei
+subagenti.
 
 Il report, per la sessione in evidenza, mostra:
 

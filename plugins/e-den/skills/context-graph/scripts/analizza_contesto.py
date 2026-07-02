@@ -126,15 +126,18 @@ def turn_cost(cr, cc, inp, out, family):
 
 
 def analyze_subagents(proj_dir, session_id):
-    """Un subagente = un file <session>/subagents/agent-*.jsonl (righe isSidechain).
-    Restituisce, per ciascuno: istante di avvio, footprint (picco-baseline, cioe' il
-    materiale che sarebbe rimasto residente se inlineato), token e costo reali (col
-    modello effettivo, spesso Haiku), e n. turni."""
+    """Un subagente = un file agent-*.jsonl sotto <session>/subagents/ (righe
+    isSidechain). Scansione RICORSIVA: include anche gli agenti dei workflow in
+    <session>/subagents/workflows/wf_*/agent-*.jsonl (esclusi i journal.jsonl).
+    Per ciascuno: avvio, footprint (picco-baseline), token e costo reali (col
+    modello effettivo), n. turni e il workflow di appartenenza (se presente)."""
     sdir = proj_dir / session_id / "subagents"
     out = []
     if not sdir.is_dir():
         return out
-    for f in sorted(sdir.glob("*.jsonl")):
+    for f in sorted(sdir.rglob("agent-*.jsonl")):
+        parts = f.relative_to(sdir).parts
+        wf = parts[1] if len(parts) >= 3 and parts[0] == "workflows" else None
         peak = first = tot = 0
         cost = 0.0
         models = Counter()
@@ -177,6 +180,7 @@ def analyze_subagents(proj_dir, session_id):
             "cost": round(cost, 2),
             "models": dict(models),
             "nturns": nt,
+            "wf": wf,
         })
     return out
 
@@ -185,24 +189,30 @@ def attach_subagents(proj_dir, sess):
     """Colloca ogni subagente sul turno main che lo ha generato, per timestamp
     (nearest chiamata Agent), fallback sul turno con ts piu' vicino."""
     subs = analyze_subagents(proj_dir, sess["id"])
-    calls = sess.get("agent_calls", [])   # [(turn, dt, subagent_type)]
+    calls = sess.get("agent_calls", [])   # [(turn, dt, subagent_type)] solo tool Agent
     turn_ts = sess.get("turn_ts", [])     # [(turn, dt)]
     placed = []
     fam = Counter()
     for s in subs:
         st = s["start"]
-        spawn, stype = 1, None
-        if st and calls:
-            turn, _, stype = min(calls, key=lambda c: abs((c[1] - st).total_seconds())
-                                 if c[1] else 1e18)
-            spawn = turn
-        elif st and turn_ts:
+        # turno di spawn = turno main con timestamp piu' vicino all'avvio (robusto
+        # sia per subagenti diretti sia per gli agenti dei workflow, in background)
+        spawn = 1
+        if st and turn_ts:
             spawn = min(turn_ts, key=lambda c: abs((c[1] - st).total_seconds())
                         if c[1] else 1e18)[0]
+        # etichetta: per i workflow usa il wf; per i diretti la chiamata Agent vicina
+        if s.get("wf"):
+            stype = "wf:" + s["wf"].replace("wf_", "")[:8]
+        elif st and calls:
+            stype = min(calls, key=lambda c: abs((c[1] - st).total_seconds())
+                        if c[1] else 1e18)[2] or "?"
+        else:
+            stype = "?"
         fam.update(s["models"])
         modelstr = "/".join(sorted(s["models"], key=lambda m: -s["models"][m]))
         # [spawn, footprint, tot, cost, type, nturns, modelstr]
-        placed.append([spawn, s["footprint"], s["tot"], s["cost"], stype or "?",
+        placed.append([spawn, s["footprint"], s["tot"], s["cost"], stype,
                        s["nturns"], modelstr or "?"])
     placed.sort(key=lambda x: x[0])
     sess["subs"] = placed
@@ -492,8 +502,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
  <div class="panel" id="panel5">
   <h2>5 &middot; Subagenti isolati &mdash; Sessione A</h2>
-  <p class="note">Ogni barra = un subagente (tool <code>Agent</code>): lunghezza = token consumati nel suo contesto <b>separato</b>, colore = modello. Questo lavoro <b>non</b> compare nel transcript principale &mdash; qui lo si vede per intero.</p>
-  <div class="chartbox sm"><canvas id="c5"></canvas></div>
+  <p class="note">Ogni barra = un subagente: lunghezza = token consumati nel suo contesto <b>separato</b>, colore = modello. Include sia i subagenti diretti (tool <code>Agent</code>) sia gli <b>agenti dei workflow</b> (etichetta <code>wf:…</code>), che si annidano in <code>subagents/workflows/</code>. Questo lavoro <b>non</b> compare nel transcript principale.</p>
+  <div class="chartbox sm" id="c5box"><canvas id="c5"></canvas></div>
  </div>
 
  <div class="panel">
@@ -563,7 +573,9 @@ const q=id=>document.getElementById(id);
 // riflessione subagenti
 if(hasSub){const mm=Object.entries(subModels).map(([m,n])=>`${m} ${n}t`).join(', ');
  const cheap=(subModels.Haiku||0)+(subModels.Sonnet||0);
- const note=cheap?' (in parte su modelli pi&ugrave; economici, es. Haiku)':'';
+ const nWf=subs.filter(s=>String(s[4]).startsWith('wf:')).length;
+ const note=(cheap?' (in parte su modelli pi&ugrave; economici, es. Haiku)':'')+
+   (nWf?` &mdash; di cui <b>${nWf}</b> lanciati dai workflow (annidati in subagents/workflows/)`:'');
  q('r-sub').innerHTML=`La Sessione A ha delegato a <b>${subN}</b> subagenti [${mm||'modelli misti'}], <b>${fmt(subTok)}</b> token in contesti <b>isolati</b> (barre nel grafico 3 e pannello 5)${note}. Non gonfiano la curva del contesto main: rientra solo il riassunto. Costo reale del sistema ~<b>${usd(sysCostReal)}</b> (main ${usd(totOpus)} + subagenti ${usd(subCost)}). Se quel lavoro fosse stato <b>inlineato</b>, il materiale sarebbe rimasto residente e riletto ad ogni turno &rarr; ~<b>${fmt(cfExtra)}</b> token in pi&ugrave; e un costo stimato di ~<b>${usd(cfCostTot)}</b>: delegare ha risparmiato ~<b>${usd(cfSaving>0?cfSaving:0)}</b> <b>e</b> tenuto basso il contesto.`;}
 else{const li=q('li-sub');if(li)li.style.display='none';}
 
@@ -631,6 +643,7 @@ window.addEventListener('mouseup',()=>{if(sel4.drag){sel4.drag=false;if(sel4.a==
 
 // chart 5 — subagenti isolati (barre orizzontali per consumo)
 if(hasSub){
+ const box=document.getElementById('c5box'); if(box)box.style.height=Math.max(340,subs.length*22+60)+'px';
  const lab=subs.map(s=>`${s[4]} · t${s[0]}`);
  new Chart(document.getElementById('c5'),{type:'bar',data:{labels:lab,datasets:[{label:'token consumati',data:subs.map(s=>s[2]),backgroundColor:subs.map(s=>modOf(s[6])),borderWidth:0}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const s=subs[c.dataIndex];return [fmt(s[2])+' token · '+s[5]+' turni',s[6]+' · costo reale '+usd(s[3])];}}}},scales:{x:{title:{display:true,text:'token consumati (contesto isolato)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y:{ticks:{color:'#cfe0ee',font:{size:11}},grid:{display:false}}}}});
 }else{const p=document.getElementById('panel5');if(p)p.style.display='none';}
