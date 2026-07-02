@@ -461,7 +461,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
  <div class="panel">
   <h2>4 &middot; Consumo (integrale) e costo API</h2>
-  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> somma i <b>token</b> dei subagenti (asse sx). Sull'asse costi: <b style="color:#ffd24f">costo reale</b> del main e <b style="color:#ff6b81">costo se SENZA delega</b> (stima) &mdash; il divario &egrave; il risparmio della delega. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
+  <p class="note">Asse <b>sinistro</b>: token consumati cumulativi (milioni). Asse <b>destro</b>: costo cumulativo stimato su <b>Opus 4.8</b> (linea gialla tratteggiata, solo Sessione A) &mdash; il modello reale delle sessioni. <b>Trascina</b> per il costo di un intervallo su pi&ugrave; modelli. La curva <b style="color:#5adfd0">totale sistema</b> somma i <b>token</b> dei subagenti (asse sx). Sull'asse costi, tre linee: <b style="color:#ffd24f">solo main</b> (reale), <b style="color:#39d98a">sistema = main+subagenti</b> (reale) e <b style="color:#ff6b81">se SENZA delega</b> (stima) &mdash; il divario tra sistema reale e controfattuale &egrave; il risparmio della delega. Prezzi: Opus $5/$25, Sonnet $3/$15, Haiku $1/$5 per Mtok; cache-read ~1/10 dell'input.</p>
   <label class="chk"><input type="checkbox" id="tgl4"> mostra i prompt utente (Enter) &mdash; Sessione A</label>
   <div class="chartbox"><canvas id="c4"></canvas></div>
   <div class="readout" id="c4read"><span class="hint">&harr; Trascina sul grafico per il costo dell'intervallo, per modello.</span></div>
@@ -527,6 +527,8 @@ const subTok=ST.sub_tot||0,subCost=ST.sub_cost||0,subN=ST.sub_n||0,subModels=ST.
 // (il materiale accumulato dai subagenti riletto come cache_read ad ogni turno)
 const _pO=PRICES.Opus; let _R=0,_k=0,_extra=0; const cfCost=S[A].cum.map((c,i)=>{const t=c[0];let nf=0;while(_k<subs.length&&subs[_k][0]<=t){nf+=subs[_k][1];_k++;}_R+=nf;_extra+=nf*_pO[3]+_R*_pO[2];return{x:t,y:cumCostOpus[i].y+_extra};});
 const cfCostTot=cfCost.length?cfCost[cfCost.length-1].y:0;
+// costo reale sistema cumulativo = costo main + costo reale dei subagenti (allo spawn)
+let _cs=0,_cj=0; const sysCostCurve=cumCostOpus.map(c=>{const t=c.x;while(_cj<subs.length&&subs[_cj][0]<=t){_cs+=subs[_cj][3];_cj++;}return{x:t,y:c.y+_cs};});
 const sysCostReal=totOpus+subCost;      // costo reale sistema = main + subagenti
 const cfSaving=cfCostTot-sysCostReal;   // risparmio stimato delegando
 const modOf=m=>({Opus:'#c792ea',Sonnet:'#5adfd0',Haiku:'#ffb86b',Fable:'#ff6b81'}[m.split('/')[0]]||'#8aa0b3');
@@ -545,7 +547,7 @@ else{const li=q('li-sub');if(li)li.style.display='none';}
 
 // cards
 const cards=[[String(ST.n_user),'prompt utente (Sessione A)',''],[String(ST.turns),'turni generati',''],[fmt(ST.maxctx),'contesto di picco',''],[fmt(ST.total),'token consumati',' hot'],[ST.integral_x+'&times;','consumo / picco',' hot'],[usd(totOpus),'costo Sessione A (Opus)',' cost']];
-if(subN)cards.push([fmt(subTok),`token subagenti (${subN}, isolati)`,' hot'],[usd(subCost),'costo subagenti (reale)',' cost'],[usd(cfCostTot),'costo se SENZA delega (stima)',' hot'],[usd(cfSaving>0?cfSaving:0),'risparmio delegando (stima)',' cost']);
+if(subN)cards.push([fmt(subTok),`token subagenti (${subN}, isolati)`,' hot'],[usd(subCost),'costo subagenti (reale)',' cost'],[usd(sysCostReal),'costo reale sistema (main+subag)',' cost'],[usd(cfCostTot),'costo se SENZA delega (stima)',' hot'],[usd(cfSaving>0?cfSaving:0),'risparmio delegando (stima)',' cost']);
 document.getElementById('cards').innerHTML=cards.map(c=>`<div class="card${c[2]}"><div class="n">${c[0]}</div><div class="l">${c[1]}</div></div>`).join('');
 const set=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
 set('r-turns',ST.turns);set('r-user',ST.n_user);set('r-bounce',ST.bounce.toFixed(0));set('r-max',fmt(ST.maxctx));set('r-total',fmt(ST.total));set('r-total2',fmt(ST.total));set('r-int',ST.integral_x+'&times;');set('r-slope','~'+ST.slope);
@@ -586,8 +588,11 @@ const eb4={id:'eb4',afterDatasetsDraw:ch=>{if(!show4)return;const c=ch.ctx,ca=ch
 const sel4={a:null,b:null,drag:false};
 const ds4=keys.map((k,i)=>({label:S[k].label,data:S[k].cum.map(p=>({x:p[0],y:p[1]})),borderColor:palette[i%6],backgroundColor:palette[i%6]+'22',fill:k===A,borderWidth:k===A?2.5:2,pointRadius:0,tension:.1,yAxisID:'y'}));
 if(hasSub)ds4.push({label:'totale sistema (main+subag)',data:sysCum,borderColor:'#5adfd0',borderDash:[7,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y'});
-ds4.push({label:'costo Opus reale (main, $)',data:cumCostOpus,borderColor:'#ffd24f',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
-if(hasSub)ds4.push({label:'costo se SENZA delega (stima, $)',data:cfCost,borderColor:'#ff6b81',borderDash:[3,3],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
+ds4.push({label:'costo Opus reale — solo main ($)',data:cumCostOpus,borderColor:'#ffd24f',borderDash:[6,4],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
+if(hasSub){
+ ds4.push({label:'costo reale sistema — main+subag ($)',data:sysCostCurve,borderColor:'#39d98a',borderDash:[6,4],borderWidth:2.5,pointRadius:0,tension:.1,yAxisID:'y1'});
+ ds4.push({label:'costo se SENZA delega (stima, $)',data:cfCost,borderColor:'#ff6b81',borderDash:[3,3],borderWidth:2,pointRadius:0,tension:.1,yAxisID:'y1'});
+}
 const c4=new Chart(document.getElementById('c4'),{type:'line',data:{datasets:ds4},options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:leg,tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?c.dataset.label.split(' (')[0]+': '+usd(c.parsed.y):c.dataset.label.split(' (')[0]+': '+fmt(c.parsed.y)+' tok'}}},scales:{x:{type:'linear',title:{display:true,text:'turno dell\'assistente',color:'#8aa0b3'},ticks:{color:'#8aa0b3'},grid:{color:'#1e2b38'}},y:{position:'left',title:{display:true,text:'token consumati (cumulativo)',color:'#8aa0b3'},ticks:{color:'#8aa0b3',callback:v=>fmt(v)},grid:{color:'#1e2b38'}},y1:{position:'right',title:{display:true,text:'costo cumulativo Opus ($)',color:'#ffd24f'},ticks:{color:'#ffd24f',callback:v=>'$'+v.toFixed(0)},grid:{drawOnChartArea:false}}}},plugins:[eb4,makeBand(sel4)]});
 document.getElementById('tgl4').addEventListener('change',e=>{show4=e.target.checked;c4.render();});
 const r4=document.getElementById('c4read');
