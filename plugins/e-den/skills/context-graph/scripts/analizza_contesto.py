@@ -666,9 +666,13 @@ def main():
     D = build_data(chosen, featured)
     name = args.name or default_name(proj.name)
     html = render_html(D, name)
-    Path(args.out).write_text(html, encoding="utf-8")
-    print(f"scritto {args.out} — {len(chosen)} sessioni "
+    out = Path(args.out).expanduser().resolve()
+    out.write_text(html, encoding="utf-8")
+    print(f"Report scritto: {len(chosen)} sessioni "
           f"(featured: {featured['id8']}, {featured['turns']} turni)")
+    print(f"  file:  {out}")
+    print(f"  apri:  {out.as_uri()}")
+    print(f"  oppure: agent-browser --allow-file-access open {out.as_uri()}")
 
 
 if __name__ == "__main__":

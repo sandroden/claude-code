@@ -70,6 +70,9 @@ Opzioni utili: `--name "nome leggibile"` (mostrato nel report),
 `--min-turns N` (esclude sessioni troppo corte, default 2).
 Salva l'HTML dove chiede l'utente (o nella cwd del progetto).
 
+Lo script stampa il percorso assoluto e l'URL `file://` del report: **riporta
+all'utente quel link** (`file://…`) così può aprirlo con un click.
+
 ### 4. Valida graficamente
 
 Come da preferenza dell'utente, **valida sempre con screenshot** usando
