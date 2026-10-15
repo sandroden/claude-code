@@ -15,6 +15,7 @@ Aggiungi il marketplace una sola volta, poi installa i plugin che ti servono:
 /plugin marketplace add sandroden/claude-code
 /plugin install e-den@e-den-marketplace
 /plugin install brainflow@e-den-marketplace
+/plugin install context-cache-bar@e-den-marketplace
 ```
 
 Riavvia/riconnetti Claude Code dopo l'installazione.
@@ -30,6 +31,7 @@ Riavvia/riconnetti Claude Code dopo l'installazione.
 |--------|----------|-------------|----------------|
 | [e-den](plugins/e-den/) | 1.2.4 | Skill e comandi di uso quotidiano (compare-words, scaffolding Django/Quasar, context-graph, status line) | [README](plugins/e-den/README.md) |
 | [brainflow](plugins/brainflow/) | 1.0.0 | Importa programmi di corso in Brainflow come Flow (MCP remoto + skill) | [README](plugins/brainflow/README.md) |
+| [context-cache-bar](plugins/context-cache-bar/) | 0.1.0 | Mod: contesto a zone colorate, countdown prompt cache, riga progetto/branch sopra il prompt | [README](plugins/context-cache-bar/README.md) |
 
 ---
 

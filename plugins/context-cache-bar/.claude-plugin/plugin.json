@@ -1,0 +1,23 @@
+{
+    "name": "context-cache-bar",
+    "version": "0.1.0",
+    "description": "Barra sopra il prompt: riempimento del contesto a zone colorate (non lineare) e countdown della prompt cache",
+    "author": {
+        "name": "Alessandro Dentella",
+        "email": "sandro@e-den.it"
+    },
+    "types": "./types/index.d.ts",
+    "userConfig": {
+        "ttl": {
+            "type": "string",
+            "title": "TTL prompt cache",
+            "description": "auto: 1h con abbonamento (rate limit presenti), 5m con API key",
+            "default": "auto",
+            "options": [
+                "auto",
+                "5m",
+                "1h"
+            ]
+        }
+    }
+}

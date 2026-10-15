@@ -14,6 +14,11 @@
             "name": "brainflow",
             "source": "./plugins/brainflow",
             "description": "Importa programmi di corso in Brainflow come Flow: connessione MCP remota (/mcp) + skill brainflow-import"
+        },
+        {
+            "name": "context-cache-bar",
+            "source": "./plugins/context-cache-bar",
+            "description": "Mod: barra sopra il prompt con riempimento del contesto a zone colorate (non lineare), countdown della prompt cache e riga progetto/branch"
         }
     ]
 }
