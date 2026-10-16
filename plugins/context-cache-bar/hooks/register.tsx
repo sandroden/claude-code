@@ -162,7 +162,7 @@ export const register: Register = (on, options) => {
     // Dove la superficie ha Svg (desktop) i tempi vanno in monospace, piccolo
     // per la riga progetto; nel terminale è già tutto monospace
     const mono = (key: string, segments: Segment[], fontSize: number, isDim = false) => {
-      if ('Svg' in ui) {
+      if (e.surface !== 'terminal' && 'Svg' in ui) {
         const svg = monoSvg(segments, fontSize)
         return <ui.Svg key={key} source={svg.source} alt={svg.alt} width={svg.width} height={svg.height} />
       }
