@@ -4,8 +4,8 @@ Mod per Claude Code (hooks module, richiede Claude Code ≥ 2.1.287): una banda 
 prompt, nel terminale e nell'app desktop.
 
 ```
-ctx [████░░░░░░░░] 14% (140K/1M)                          cache [████████] 58:36 /1h
-proactivity(pkg)@default/topic
+ctx [████░░░░░░░░] 14% (140K/1M)                 cache [████████] 58:36 /1h
+proactivity(pkg)@default/topic                   sessione  34% fine 18:40 (2h13m)
 ```
 
 ## Prima riga
@@ -28,10 +28,18 @@ proactivity(pkg)@default/topic
 
 ## Seconda riga
 
-Progetto, tipo e branch, come `render_project` della status line: nome da `pyproject.toml`
+**Sessione**, a destra: la finestra di rate limit a 5 ore dell'abbonamento (`five_hour`):
+quota usata, ora locale di fine (`resetsAt`) e tempo mancante. Verde sotto il 50%, ambra
+sotto l'80%, poi rossa. Il fuso è letto all'avvio con `date +%z`, perché l'ambiente dei
+mod non lo espone. Senza abbonamento la riga non compare.
+
+**Progetto**, a sinistra:, tipo e branch, come `render_project` della status line: nome da `pyproject.toml`
 (o la cartella), `app` se c'è `Dockerfile`/`manage.py`, `pkg` con solo `pyproject.toml`;
-branch `hg branch` + topic, oppure `git branch --show-current`. Nell'app desktop è un piccolo
-SVG a 11px, nel terminale testo attenuato. Si aggiorna a fine turno.
+branch `hg branch` + topic, oppure `git branch --show-current`. Si aggiorna a fine turno.
+
+Nell'app desktop i componenti di testo non hanno dimensione né famiglia del font: i tempi
+(cache, sessione) e la riga progetto sono piccoli SVG monospace, così le cifre non
+"ballano" mentre scorrono. Nel terminale è tutto testo.
 
 ## Opzioni
 

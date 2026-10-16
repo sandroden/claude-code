@@ -1,7 +1,7 @@
 {
     "name": "context-cache-bar",
-    "version": "0.1.0",
-    "description": "Barra sopra il prompt: riempimento del contesto a zone colorate (non lineare) e countdown della prompt cache",
+    "version": "0.2.0",
+    "description": "Barra sopra il prompt: contesto a zone colorate (non lineare), countdown prompt cache, fine della finestra a 5 ore, riga progetto/branch",
     "author": {
         "name": "Alessandro Dentella",
         "email": "sandro@e-den.it"

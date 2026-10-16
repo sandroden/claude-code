@@ -31,7 +31,7 @@ Riavvia/riconnetti Claude Code dopo l'installazione.
 |--------|----------|-------------|----------------|
 | [e-den](plugins/e-den/) | 1.2.4 | Skill e comandi di uso quotidiano (compare-words, scaffolding Django/Quasar, context-graph, status line) | [README](plugins/e-den/README.md) |
 | [brainflow](plugins/brainflow/) | 1.0.0 | Importa programmi di corso in Brainflow come Flow (MCP remoto + skill) | [README](plugins/brainflow/README.md) |
-| [context-cache-bar](plugins/context-cache-bar/) | 0.1.0 | Mod: contesto a zone colorate, countdown prompt cache, riga progetto/branch sopra il prompt | [README](plugins/context-cache-bar/README.md) |
+| [context-cache-bar](plugins/context-cache-bar/) | 0.2.0 | Mod: contesto a zone colorate, countdown prompt cache, fine finestra 5h, riga progetto/branch sopra il prompt | [README](plugins/context-cache-bar/README.md) |
 
 ---
 

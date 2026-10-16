@@ -63,20 +63,44 @@ export const blocks = (filled: number, total: number) => ['█'.repeat(filled), 
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-// Riga progetto in piccolo: nome giallo, (tipo) grigio, @branch ciano
-export function projectSvg(p: { name: string; type: string | null; branch: string | null }) {
-  const type = p.type ? `(${p.type})` : ''
-  const branch = p.branch ? ` @${p.branch}` : ''
-  const alt = `${p.name}${type}${branch}`
-  const fontSize = 11
-  const width = Math.ceil(alt.length * fontSize * 0.62) + 4
-  const height = fontSize + 5
+export type Segment = { text: string; color: string }
+
+// Testo monospace in SVG: cifre a larghezza fissa, non "ballano" mentre scorrono
+export function monoSvg(segments: readonly Segment[], fontSize: number) {
+  const alt = segments.map(s => s.text).join('')
+  const width = Math.ceil(alt.length * fontSize * 0.62) + 2
+  const height = Math.ceil(fontSize * 1.35)
+  const spans = segments.map(s => `<tspan fill="${s.color}">${esc(s.text)}</tspan>`).join('')
   const source =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    `<text x="0" y="${fontSize}" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="${fontSize}">` +
-    `<tspan fill="#d29922">${esc(p.name)}</tspan>` +
-    (type ? `<tspan fill="#8b949e">${esc(type)}</tspan>` : '') +
-    (branch ? `<tspan fill="#39c5cf">${esc(branch)}</tspan>` : '') +
-    `</text></svg>`
+    `<text x="0" y="${Math.round(fontSize * 1.02)}" font-family="ui-monospace, Menlo, Consolas, 'DejaVu Sans Mono', monospace" ` +
+    `font-size="${fontSize}" xml:space="preserve">${spans}</text></svg>`
   return { source, alt, width, height }
+}
+
+export const COLOR_DIM = '#8b949e'
+
+// Riga progetto: nome giallo, (tipo) grigio, @branch ciano
+export function projectSegments(p: { name: string; type: string | null; branch: string | null }): Segment[] {
+  const out: Segment[] = [{ text: p.name, color: '#d29922' }]
+  if (p.type) out.push({ text: `(${p.type})`, color: COLOR_DIM })
+  if (p.branch) out.push({ text: ` @${p.branch}`, color: '#39c5cf' })
+  return out
+}
+
+// Colore della finestra a 5 ore per quota usata
+export function windowColor(percent: number): string {
+  return percent < 50 ? ZONE_COLORS[0] : percent < 80 ? ZONE_COLORS[1] : COLOR_OVER
+}
+
+// Ora locale HH:MM di un istante, dato l'offset del fuso in minuti
+export function hhmm(ms: number, tzOffsetMin: number): string {
+  const d = new Date(ms + tzOffsetMin * 60_000)
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+}
+
+// Durata compatta: 2h13m, 45m
+export function shortDuration(ms: number): string {
+  const m = Math.max(0, Math.ceil(ms / 60_000))
+  return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}m`
 }

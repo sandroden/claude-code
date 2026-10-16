@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cacheBar, clock, contextBar, humanTokens } from '../hooks/bar'
+import { cacheBar, clock, contextBar, hhmm, humanTokens, monoSvg, shortDuration, windowColor } from '../hooks/bar'
 
 test('finestra 1M: a 150k (15%) è già oltre la zona verde', async () => {
   const b = contextBar(15, 1_000_000)
@@ -28,4 +28,21 @@ test('formati', async () => {
   expect(humanTokens(1_000_000)).toBe('1M')
   expect(clock(221_000)).toBe('3:41')
   expect(clock(3_600_000)).toBe('1:00:00')
+})
+
+test('finestra 5h: ora locale, durata e colore', async () => {
+  // 16:40 UTC con fuso +0200 -> 18:40
+  expect(hhmm(Date.parse('2026-10-16T16:40:00Z'), 120)).toBe('18:40')
+  expect(hhmm(Date.parse('2026-10-16T00:10:00Z'), -300)).toBe('19:10')
+  expect(shortDuration(133 * 60_000)).toBe('2h13m')
+  expect(shortDuration(45 * 60_000)).toBe('45m')
+  expect(windowColor(30)).toBe('#3fb950')
+  expect(windowColor(85)).toBe('#f85149')
+})
+
+test('monoSvg: larghezza proporzionale ai caratteri, testo escapato', async () => {
+  const a = monoSvg([{ text: '59:22', color: '#fff' }], 14)
+  const b = monoSvg([{ text: '9:22', color: '#fff' }], 14)
+  expect(a.width).toBeGreaterThan(b.width)
+  expect(monoSvg([{ text: 'a<b', color: '#fff' }], 11).source).toContain('a&lt;b')
 })
